@@ -1,0 +1,11 @@
+Harlow & Finch Consulting
+Invoice HF-0042
+Issued 2026-09-29, payable within 30 days
+
+Professional services - data platform assessment
+  Discovery workshops (3 days @ $1,800/day)           $5,400.00
+  Architecture report                                 $3,000.00
+
+Total                                                 $8,400.00
+
+Please reference this invoice number on payment.

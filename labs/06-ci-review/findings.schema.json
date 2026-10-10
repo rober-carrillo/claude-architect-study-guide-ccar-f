@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string", "description": "Repo-relative path"},
+          "line": {"type": "integer", "description": "Line in the NEW version of the file"},
+          "severity": {"type": "string", "enum": ["high", "medium", "low"]},
+          "category": {"type": "string", "enum": ["bug", "security", "integration", "test_gap"]},
+          "detected_pattern": {
+            "type": "string",
+            "description": "Short stable label for the code construct that triggered this, e.g. 'sql-fstring', 'float-money', 'caller-signature-mismatch'. Used to dedup and to analyse dismissals."
+          },
+          "message": {"type": "string", "description": "What is wrong and why it matters, one or two sentences"},
+          "fix": {"type": "string", "description": "Concrete change, ideally a code snippet"},
+          "confidence": {"type": "number", "description": "0.0-1.0"}
+        },
+        "required": ["file", "line", "severity", "category", "detected_pattern", "message", "fix", "confidence"]
+      }
+    },
+    "summary": {"type": "string"}
+  },
+  "required": ["findings", "summary"]
+}

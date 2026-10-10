@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exam & Scenarios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="exam" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Exam" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Start here · about 45 minutes</p>
+  <h1>The exam and its scenarios</h1>
+  <p class="lede">What you'll face, how it's scored, the six production scenarios every question is built on, and how to eliminate wrong answers.</p>
+  <div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="logistics" data-tag="i" data-label="Format & logistics">
+  <div class="sec-head"><span class="tag">Exam</span><h2 class="sec">Format, scoring and logistics</h2>
+  <p>From the official exam guide, v1.0 (effective July 2026). It is subject to change, so check the current version before you book.</p></div>
+  <div class="facts">
+    <div><b>60</b><span>items, 15 per scenario</span></div>
+    <div><b>120 min</b><span>2:00 per item on average</span></div>
+    <div><b>4 of 6</b><span>scenarios, drawn at random</span></div>
+    <div><b>720</b><span>pass mark on a 100–1,000 scale</span></div>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Item</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Exam code</td><td>CCAR-F</td></tr>
+      <tr><td>Item types</td><td>Multiple-choice and multiple-response; each item says how many to select</td></tr>
+      <tr><td>Delivery</td><td>Pearson VUE, online proctored or at a test center</td></tr>
+      <tr><td>Fee</td><td>$125 USD (partner-tier discounts may apply)</td></tr>
+      <tr><td>Score report</td><td>Pass/fail, scaled score, percent correct per domain (domain scores don't decide pass/fail)</td></tr>
+      <tr><td>Scoring model</td><td>Criterion-referenced: you're measured against a fixed standard, not other candidates</td></tr>
+      <tr><td>Retakes</td><td>Wait 14 days after the 1st fail, 30 after the 2nd, 90 after the 3rd; max 4 attempts in 12 months; fee each time</td></tr>
+      <tr><td>Rescheduling</td><td>Up to 24 h before; later changes forfeit the fee</td></tr>
+      <tr><td>Validity</td><td>12 months; on-time renewal is a free, unproctored assessment</td></tr>
+      <tr><td>Room rules</td><td>No notes, phones, watches, headphones or second monitors; stay in webcam view</td></tr>
+    </tbody>
+  </table></div>
+  <div class="call note"><b>About the 720</b><p>720 is a <em>scaled</em> score, so it doesn't mean "72% correct". Scaling evens out different exam forms, and the raw-to-scaled mapping isn't published. For practice, aim for <strong>80%+</strong> on fresh questions to leave margin.</p></div>
+  <h3>Not on the exam</h3>
+  <p>Fine-tuning; API authentication, OAuth, key rotation, billing; rate limits and pricing calculations; hosting MCP servers; streaming/SSE; computer use; vision; embeddings and vector DBs; cloud-provider setup; benchmarking; tokenization; prompt-caching details beyond knowing it exists; Claude's training, RLHF, Constitutional AI.</p>
+</section>
+<section class="sheet" id="scenarios" data-tag="iii" data-label="The six scenarios">
+  <div class="sec-head"><span class="tag">Exam</span><h2 class="sec">The six scenarios and five domains</h2>
+  <p>Each exam uses 4 of these 6 scenarios with 15 questions each. Every scenario mixes questions from several domains.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Domain</th><th>Weight</th><th>Module</th></tr></thead>
+    <tbody>
+      <tr><td>1 Agentic Architecture &amp; Orchestration</td><td class="num">27%</td><td><a href="d1-agentic.html">D1</a></td></tr>
+      <tr><td>2 Tool Design &amp; MCP Integration</td><td class="num">18%</td><td><a href="d2-tools-mcp.html">D2</a></td></tr>
+      <tr><td>3 Claude Code Configuration &amp; Workflows</td><td class="num">20%</td><td><a href="d3-claude-code.html">D3</a></td></tr>
+      <tr><td>4 Prompt Engineering &amp; Structured Output</td><td class="num">20%</td><td><a href="d4-prompting.html">D4</a></td></tr>
+      <tr><td>5 Context Management &amp; Reliability</td><td class="num">15%</td><td><a href="d5-context.html">D5</a></td></tr>
+    </tbody></table></div>
+  <div class="scen-grid">
+    <article class="scen">
+      <p class="scen-n">Scenario 1</p>
+      <h3>Customer Support Resolution Agent</h3>
+      <p class="setup">An Agent SDK agent handles ambiguous returns, billing disputes and account issues through MCP tools <code>get_customer</code>, <code>lookup_order</code>, <code>process_refund</code> and <code>escalate_to_human</code>. The target is 80%+ first-contact resolution while knowing when to escalate.</p>
+      <p class="doms">Agentic architecture · Tool design &amp; MCP · Context &amp; reliability</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li>Agent skips <code>get_customer</code> and refunds the wrong account → a <strong>programmatic prerequisite</strong> that blocks <code>lookup_order</code>/<code>process_refund</code> until a verified ID exists</li>
+        <li>Wrong tool picked between two similar ones → <strong>better descriptions</strong> first</li>
+        <li>Escalates easy cases and tackles policy exceptions → <strong>explicit escalation criteria + few-shot examples</strong> (not confidence scores, not sentiment)</li>
+        <li>Refunds over $500 → <strong>hook</strong> that blocks and redirects to escalation</li>
+        <li>Message with three separate complaints → split into items, investigate each, then give one unified reply</li>
+        <li>Handoff to a human who can't see the transcript → structured summary: customer ID, root cause, amount, recommended action</li>
+        <li>Long chat loses amounts and order numbers → persistent <strong>case facts</strong> block; trim the 40-field order lookups</li>
+      </ul>
+    </article>
+
+    <article class="scen">
+      <p class="scen-n">Scenario 2</p>
+      <h3>Code Generation with Claude Code</h3>
+      <p class="setup">A team uses Claude Code for generation, refactoring, debugging and docs. It needs custom slash commands, CLAUDE.md configuration, and a sense of when to use plan mode versus direct execution.</p>
+      <p class="doms">Claude Code config · Context &amp; reliability</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li>Shared <code>/review</code> command → <code>.claude/commands/</code> in the repo (not <code>~/.claude/commands/</code>, not CLAUDE.md, not a made-up <code>config.json</code>)</li>
+        <li>Monolith to microservices → <strong>plan mode</strong> from the start, because the complexity is already known</li>
+        <li>Test files scattered next to source → <code>.claude/rules/</code> with a <code>**/*.test.tsx</code> glob, not a CLAUDE.md per directory</li>
+        <li>New teammate missing conventions → they were in user-level CLAUDE.md; check with <code>/memory</code></li>
+        <li>Prose instructions read inconsistently → 2–3 concrete input/output examples</li>
+        <li>Long session starts saying "typical patterns" instead of naming real classes → scratchpad file, <code>/compact</code>, Explore subagent</li>
+      </ul>
+    </article>
+
+    <article class="scen">
+      <p class="scen-n">Scenario 3</p>
+      <h3>Multi-Agent Research System</h3>
+      <p class="setup">A coordinator delegates to four subagents: web search, document analysis, synthesis and report generation. It produces comprehensive, cited reports.</p>
+      <p class="doms">Agentic architecture · Tool design &amp; MCP · Context &amp; reliability</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li>Report covers only part of the topic while every subagent did its job → the <strong>coordinator's decomposition</strong> was too narrow</li>
+        <li>Subagent times out → return <strong>structured error context</strong> (failure type, query tried, partial results, alternatives)</li>
+        <li>Synthesis keeps bouncing to the coordinator for simple fact checks → a scoped <code>verify_fact</code> tool for the common case; complex checks still go through the coordinator</li>
+        <li>Slow pipeline → several Task calls in <strong>one</strong> coordinator turn</li>
+        <li>Citations lost in synthesis → structured claim–source mappings carried through every step</li>
+        <li>Two credible sources disagree → keep both, attributed; don't pick one</li>
+        <li>Coordinator needs <code>"Task"</code> in <code>allowedTools</code></li>
+      </ul>
+    </article>
+
+    <article class="scen">
+      <p class="scen-n">Scenario 4</p>
+      <h3>Developer Productivity with Claude</h3>
+      <p class="setup">An Agent SDK tool helps engineers explore unfamiliar codebases, understand legacy systems, generate boilerplate and automate chores, using built-in tools (Read, Write, Bash, Grep, Glob) and MCP servers.</p>
+      <p class="doms">Tool design &amp; MCP · Claude Code config · Agentic architecture</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li><strong>Grep</strong> searches file contents (callers, error strings). <strong>Glob</strong> finds files by name pattern.</li>
+        <li><strong>Edit</strong> fails when its anchor text isn't unique → fall back to Read + Write</li>
+        <li>Understanding a codebase: Grep for entry points, then Read along imports. Don't read everything upfront.</li>
+        <li>Agent prefers Grep over a better MCP tool → improve the MCP tool's description</li>
+        <li>Standard integration like Jira → use the community MCP server; build custom only for team-specific work</li>
+        <li>Agent keeps probing to learn what exists → expose a catalog as an MCP <strong>resource</strong></li>
+        <li>"Add tests to a legacy codebase" → map the structure, find high-impact areas, then follow a plan that adapts</li>
+      </ul>
+    </article>
+
+    <article class="scen">
+      <p class="scen-n">Scenario 5</p>
+      <h3>Claude Code for Continuous Integration</h3>
+      <p class="setup">Claude Code runs in CI/CD for automated review, test generation and PR feedback. Prompts must give actionable feedback and keep false positives low.</p>
+      <p class="doms">Claude Code config · Prompt engineering &amp; structured output</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li>Job hangs → <code>-p</code>. The distractors <code>CLAUDE_HEADLESS</code>, <code>--batch</code> and <code>&lt; /dev/null</code> don't exist or don't work.</li>
+        <li>Machine-readable findings → <code>--output-format json</code> + <code>--json-schema</code></li>
+        <li>14-file PR reviewed unevenly → a pass per file, then a cross-file integration pass</li>
+        <li>Duplicate comments after new commits → include prior findings; report only new or unresolved issues</li>
+        <li>False positives → explicit criteria; temporarily disable the noisy category</li>
+        <li>Cost cut proposal → Batch for the overnight report, synchronous for the pre-merge gate</li>
+        <li>Self-review is weak → use an independent instance</li>
+      </ul>
+    </article>
+
+    <article class="scen">
+      <p class="scen-n">Scenario 6</p>
+      <h3>Structured Data Extraction</h3>
+      <p class="setup">Extract information from unstructured documents, validate it with JSON schemas, keep accuracy high, handle edge cases and feed downstream systems.</p>
+      <p class="doms">Prompt engineering &amp; structured output · Context &amp; reliability</p>
+      <h4>What they probe</h4>
+      <ul>
+        <li>Reliable JSON → extraction tool + <code>tool_use</code>. Use <code>"any"</code> when the document type is unknown, and forced tool choice to make one extraction run first.</li>
+        <li>Made-up values → nullable fields; enum with <code>"unclear"</code>, or <code>"other"</code> + a detail field</li>
+        <li>Totals don't add up → <code>calculated_total</code> next to <code>stated_total</code>, a <code>conflict_detected</code> flag, and a retry that includes the specific error</li>
+        <li>Retry won't help when the data isn't in the document</li>
+        <li>Varied layouts (inline citations vs bibliography) → few-shot examples of each</li>
+        <li>97% overall can hide a bad document type → measure accuracy by type and field; stratified sampling</li>
+        <li>Batch failures → resubmit by <code>custom_id</code>, splitting oversized documents into chunks</li>
+      </ul>
+    </article>
+  </div>
+
+  <div class="call exam"><b>How to read a scenario question</b>
+  <ul>
+    <li><strong>"Most effective <em>first</em> step"</strong> means the cheapest change that fixes the root cause. A routing classifier, an ML model or a bigger model is usually the over-engineered distractor.</li>
+    <li><strong>"Guarantee" or "must never"</strong> points to code: a hook, a prerequisite gate or a deny rule. Without that wording, a better prompt or few-shot examples are usually fine.</li>
+    <li><strong>Read the logs in the question.</strong> The official sample questions put the root cause in the evidence ("the coordinator decomposed into digital art, graphic design, photography").</li>
+    <li>When several downstream components "work correctly", the fault is <strong>upstream</strong>.</li>
+  </ul></div>
+
+</section>
+<section class="sheet" id="strategy" data-tag="ii" data-label="Answering strategy">
+  <div class="sec-head"><span class="tag">Exam</span><h2 class="sec">How to answer scenario questions</h2>
+  <p>Almost every option is plausible. These patterns help you eliminate the wrong ones quickly.</p></div>
+  <h3>Read the question's key word first</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Wording</th><th>What it's asking for</th></tr></thead>
+    <tbody>
+      <tr><td>"most effective <strong>first</strong> step"</td><td>The cheapest change that addresses the root cause. Not the most complete redesign.</td></tr>
+      <tr><td>"<strong>most likely root cause</strong>"</td><td>Read the evidence in the stem (logs, decomposition, config); the answer is usually in it. If downstream parts "work correctly", look upstream.</td></tr>
+      <tr><td>"<strong>guarantee</strong>", "must never", "every time", financial or legal consequences</td><td>Deterministic code: a hook, prerequisite gate, permission rule or schema.</td></tr>
+      <tr><td>"<strong>most maintainable</strong>"</td><td>The option that applies automatically and scales (glob rules, project config) over manual or per-person setups.</td></tr>
+      <tr><td>"available to every developer"</td><td>Project scope, committed to the repo.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Distractor patterns</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Pattern</th><th>Sounds like</th><th>Why it's usually wrong</th></tr></thead>
+    <tbody>
+      <tr><td>Over-engineering</td><td>"Train a classifier", "add a routing layer", "deploy a separate model"</td><td>Needs labelled data and infrastructure before the simple fix has been tried</td></tr>
+      <tr><td>Bigger hammer</td><td>"Use a larger model / context window"</td><td>Doesn't fix attention dilution, unclear criteria or bad decomposition</td></tr>
+      <tr><td>Prompt where code is needed</td><td>"Make the instruction mandatory", "add warnings in caps"</td><td>Probabilistic; non-zero failure rate where zero is required</td></tr>
+      <tr><td>Self-assessment</td><td>"Have the model rate its confidence 1–10"</td><td>Uncalibrated; the model is often confidently wrong on hard cases</td></tr>
+      <tr><td>Sentiment proxy</td><td>"Escalate when the customer sounds angry"</td><td>Sentiment doesn't track case complexity</td></tr>
+      <tr><td>Wrong layer</td><td>Tuning the search agent when the coordinator mis-scoped the task</td><td>Fixes a symptom downstream</td></tr>
+      <tr><td>Hide the failure</td><td>"Return empty results as success", "generic 'unavailable' message"</td><td>Removes the information needed to recover</td></tr>
+      <tr><td>Nuke everything</td><td>"Terminate the workflow on any failure"</td><td>Throws away good partial work</td></tr>
+      <tr><td>Shift the burden</td><td>"Make developers split their PRs"</td><td>Doesn't improve the system</td></tr>
+      <tr><td>Doesn't exist</td><td><code>CLAUDE_HEADLESS=true</code>, <code>--batch</code>, <code>.claude/config.json</code> commands array</td><td>If you've never seen the flag or file, be suspicious</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Time management</h3>
+  <ul>
+    <li>2 minutes per item. At 30 minutes you should be around item 15, at 60 around 30, and at 90 around 45.</li>
+    <li><strong>Flag and move on</strong> after about 90 seconds. Candidates report changing about half of their flagged answers on review, because later questions jog their memory.</li>
+    <li>Multiple-response: decide each option on its own (true or false for this scenario), then check that the count matches.</li>
+  </ul>
+  <div class="quiz-embed" data-domains="1,2,3,4,5" data-count="3"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>

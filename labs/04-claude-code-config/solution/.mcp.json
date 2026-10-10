@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "catalog": {
+      "type": "stdio",
+      "command": "${LABS_PYTHON:-python3}",
+      "args": ["${LABS_DIR}/02-mcp-server/solution/server.py"],
+      "env": {
+        "INVENTORY_API_TOKEN": "${INVENTORY_API_TOKEN}"
+      }
+    }
+  }
+}

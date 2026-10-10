@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice & Mock Exam</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-base="" data-page="practice">
+<div class="shell wide">
+<main>
+
+<section class="sheet hero">
+  <p class="eyebrow">Practice</p>
+  <h1>Drills and mock exam</h1>
+  <p class="lede">Every option comes with a reason, right or wrong. Read the wrong-option explanations as carefully as the right one: the exam's distractors repeat the same patterns.</p>
+  <div class="row" role="tablist">
+    <button class="btn" type="button" data-tab="drill" id="tab-drill">Drill</button>
+    <button class="btn ghost" type="button" data-tab="mock" id="tab-mock">Mock exam</button>
+    <button class="btn ghost" type="button" data-tab="missed" id="tab-missed">Missed questions</button>
+  </div>
+</section>
+
+<!-- Drill -->
+<section class="sheet" id="drill">
+  <div class="sec-head"><span class="tag">Drill</span><h2 class="sec">Build a drill</h2>
+  <p>Instant feedback. Options are shuffled each time, so you learn the reasoning, not the letter.</p></div>
+  <div class="row">
+    <label class="field">Domain<select id="f-dom"><option value="">All domains</option></select></label>
+    <label class="field">Scenario<select id="f-scen"><option value="">All scenarios</option></select></label>
+    <label class="field">Questions<select id="f-status">
+      <option value="all">All</option><option value="new">Not attempted yet</option>
+      <option value="missed">Last attempt wrong</option><option value="weak">Not yet right</option></select></label>
+    <label class="field">How many<select id="f-n"><option>5</option><option selected>10</option><option>20</option><option value="999">All matching</option></select></label>
+    <button class="btn" type="button" id="drill-go" style="align-self:end">Start drill</button>
+  </div>
+  <p class="score" id="drill-score" style="margin-top:16px"></p>
+  <div id="drill-list"></div>
+</section>
+
+<!-- Mock -->
+<section class="sheet" id="mock" hidden>
+  <div class="sec-head"><span class="tag">Mock</span><h2 class="sec">Timed mock exam</h2>
+  <p>Like the real format: 4 scenarios drawn at random, 15 questions each, 120 minutes, no feedback until you submit. Your attempt survives a page reload.</p></div>
+  <div id="mock-setup">
+    <ul>
+      <li>Questions come from this guide's 120-question bank (20 per scenario), so a second mock will repeat questions. Treat mock #1 as the honest measurement.</li>
+      <li>720 is a scaled score, not 72%. Aim for 80%+ here.</li>
+      <li>Flag questions you want to revisit; the grid shows answered and flagged items.</li>
+    </ul>
+    <div class="row">
+      <label class="field">Length<select id="m-len"><option value="full" selected>Full: 60 questions, 120 min</option><option value="half">Half: 30 questions (2 scenarios), 60 min</option></select></label>
+      <button class="btn" type="button" id="mock-go" style="align-self:end">Start mock exam</button>
+      <button class="btn ghost" type="button" id="mock-resume" style="align-self:end" hidden>Resume attempt in progress</button>
+    </div>
+  </div>
+  <div id="mock-run" hidden>
+    <div class="exam-bar">
+      <span class="timer" id="m-timer">120:00</span>
+      <span class="small" id="m-pos"></span>
+      <div class="qgrid" id="m-grid"></div>
+    </div>
+    <div id="m-q" style="margin-top:16px"></div>
+    <div class="row">
+      <button class="btn ghost" type="button" id="m-prev">← Previous</button>
+      <button class="btn ghost" type="button" id="m-flag">Flag</button>
+      <button class="btn" type="button" id="m-next">Next →</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" type="button" id="m-submit">Submit exam</button>
+    </div>
+    <div class="call trap" id="m-confirm" hidden><b>Submit now?</b>
+      <p id="m-confirm-text"></p>
+      <div class="row"><button class="btn" type="button" id="m-yes">Submit</button><button class="btn ghost" type="button" id="m-no">Keep working</button></div></div>
+  </div>
+  <div id="mock-result" hidden></div>
+</section>
+
+<!-- Missed -->
+<section class="sheet" id="missed" hidden>
+  <div class="sec-head"><span class="tag">Review</span><h2 class="sec">Missed questions</h2>
+  <p>Every question whose most recent attempt was wrong. Answer one correctly and it leaves this list.</p></div>
+  <p class="score" id="missed-score"></p>
+  <div id="missed-list"></div>
+</section>
+
+</main>
+</div>
+<footer class="footer">Practice questions written for this guide in the exam's style. They are not real exam items.</footer>
+<script src="assets/js/data/questions-s1-s3.js"></script>
+<script src="assets/js/data/questions-s2-s4.js"></script>
+<script src="assets/js/data/questions-s5-s6.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+(function () {
+  const { store, renderQuestion, shuffle, recordAnswer, SCEN, DOM, LETTERS } = window.CCA;
+  const bank = window.QBANK || [];
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Tabs ----------
+  const TABS = ["drill", "mock", "missed"];
+  function show(tab) {
+    TABS.forEach((t) => {
+      $(t).hidden = t !== tab;
+      $("tab-" + t).className = "btn" + (t === tab ? "" : " ghost");
+    });
+    if (tab === "missed") renderMissed();
+    if (tab === "mock") refreshMockSetup();
+    try { history.replaceState(null, "", "#" + tab); } catch (e) {}
+  }
+  TABS.forEach((t) => $("tab-" + t).addEventListener("click", () => show(t)));
+
+  // ---------- Drill ----------
+  for (let d = 1; d <= 5; d++) $("f-dom").insertAdjacentHTML("beforeend", `<option value="${d}">D${d} · ${DOM[d]}</option>`);
+  for (let s = 1; s <= 6; s++) $("f-scen").insertAdjacentHTML("beforeend", `<option value="${s}">S${s} · ${SCEN[s]}</option>`);
+  let drillScore = { n: 0, c: 0, total: 0 };
+  function paintDrill() {
+    $("drill-score").textContent = drillScore.total
+      ? `${drillScore.c} of ${drillScore.n} correct · ${drillScore.total - drillScore.n} left`
+      : "";
+  }
+  $("drill-go").addEventListener("click", () => {
+    const dom = +$("f-dom").value || null, scen = +$("f-scen").value || null, status = $("f-status").value, n = +$("f-n").value;
+    let pool = bank.filter((q) => (!dom || q.domain === dom) && (!scen || q.scenario === scen));
+    pool = pool.filter((q) => {
+      const r = store.get("q:" + q.id, null);
+      if (status === "new") return !r;
+      if (status === "missed") return r && !r.last;
+      if (status === "weak") return !r || !r.last;
+      return true;
+    });
+    const picked = shuffle(pool).slice(0, n);
+    const list = $("drill-list");
+    list.innerHTML = "";
+    drillScore = { n: 0, c: 0, total: picked.length };
+    if (!picked.length) {
+      list.innerHTML = `<p class="small">No questions match those filters. Try "All" or another domain.</p>`;
+      paintDrill();
+      return;
+    }
+    picked.forEach((q, i) => renderQuestion(q, list, {
+      label: `Q${i + 1} of ${picked.length}`,
+      onReveal: (ok) => { drillScore.n++; if (ok) drillScore.c++; paintDrill(); },
+    }));
+    paintDrill();
+  });
+
+  // ---------- Missed ----------
+  function renderMissed() {
+    const list = $("missed-list");
+    list.innerHTML = "";
+    const missed = bank.filter((q) => { const r = store.get("q:" + q.id, null); return r && !r.last; });
+    $("missed-score").textContent = missed.length ? `${missed.length} question${missed.length > 1 ? "s" : ""} to revisit` : "Nothing here. Every question you've attempted was right on its latest try.";
+    missed.forEach((q, i) => renderQuestion(q, list, { label: `Missed ${i + 1}` }));
+  }
+
+  // ---------- Mock exam ----------
+  const MOCK_KEY = "mock:current";
+  let M = null, timerId = null, current = null;
+
+  function refreshMockSetup() {
+    const saved = store.get(MOCK_KEY, null);
+    $("mock-resume").hidden = !(saved && !saved.done);
+    if (M && !M.done) { $("mock-setup").hidden = true; $("mock-run").hidden = false; }
+  }
+
+  function newMock(len) {
+    const nScen = len === "half" ? 2 : 4;
+    const scens = shuffle([1, 2, 3, 4, 5, 6]).slice(0, nScen).sort((a, b) => a - b);
+    const items = [];
+    scens.forEach((s) => {
+      shuffle(bank.filter((q) => q.scenario === s)).slice(0, 15).forEach((q) => {
+        items.push({ id: q.id, order: shuffle(q.options.map((_, i) => i)), sel: [], flag: false });
+      });
+    });
+    return { scens, items, idx: 0, start: Date.now(), limit: nScen * 30 * 60, done: false };
+  }
+  const qById = (id) => bank.find((q) => q.id === id);
+  const save = () => store.set(MOCK_KEY, M);
+
+  function startRun() {
+    $("mock-setup").hidden = true;
+    $("mock-result").hidden = true;
+    $("mock-run").hidden = false;
+    buildGrid();
+    showQ(M.idx);
+    clearInterval(timerId);
+    timerId = setInterval(tick, 1000);
+    tick();
+  }
+  $("mock-go").addEventListener("click", () => { M = newMock($("m-len").value); save(); startRun(); });
+  $("mock-resume").addEventListener("click", () => { M = store.get(MOCK_KEY, null); if (M) startRun(); });
+
+  function tick() {
+    const left = Math.max(0, M.limit - Math.floor((Date.now() - M.start) / 1000));
+    const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
+    $("m-timer").textContent = `${mm}:${ss}`;
+    $("m-timer").classList.toggle("low", left < 600);
+    if (left === 0) finish();
+  }
+  function buildGrid() {
+    const g = $("m-grid");
+    g.innerHTML = "";
+    M.items.forEach((it, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = i + 1;
+      b.addEventListener("click", () => showQ(i));
+      g.appendChild(b);
+    });
+    paintGrid();
+  }
+  function paintGrid() {
+    [...$("m-grid").children].forEach((b, i) => {
+      const it = M.items[i];
+      b.className = (it.sel.length ? "ans " : "") + (it.flag ? "flag " : "") + (i === M.idx ? "cur" : "");
+      b.title = `Q${i + 1}${it.flag ? " (flagged)" : ""}`;
+    });
+    const answered = M.items.filter((it) => it.sel.length).length;
+    $("m-pos").textContent = `Question ${M.idx + 1} of ${M.items.length} · ${answered} answered · ${M.items.filter((i) => i.flag).length} flagged`;
+    $("m-flag").textContent = M.items[M.idx].flag ? "Unflag" : "Flag";
+  }
+  function showQ(i) {
+    M.idx = i; save();
+    const it = M.items[i], q = qById(it.id);
+    const host = $("m-q");
+    host.innerHTML = "";
+    const block = Math.floor(i / 15);
+    current = renderQuestion(q, host, {
+      mode: "exam", order: it.order, initial: it.sel,
+      label: `Q${i + 1} · Scenario block ${block + 1} of ${M.scens.length}`,
+      onSelect: (sel) => { it.sel = sel; save(); paintGrid(); },
+    });
+    $("m-prev").disabled = i === 0;
+    $("m-next").disabled = i === M.items.length - 1;
+    paintGrid();
+    host.scrollIntoView({ block: "nearest" });
+  }
+  $("m-prev").addEventListener("click", () => M.idx > 0 && showQ(M.idx - 1));
+  $("m-next").addEventListener("click", () => M.idx < M.items.length - 1 && showQ(M.idx + 1));
+  $("m-flag").addEventListener("click", () => { M.items[M.idx].flag = !M.items[M.idx].flag; save(); paintGrid(); });
+  $("m-submit").addEventListener("click", () => {
+    const un = M.items.filter((it) => !it.sel.length).length, fl = M.items.filter((it) => it.flag).length;
+    $("m-confirm-text").textContent = `${un} unanswered, ${fl} flagged. Unanswered questions count as wrong.`;
+    $("m-confirm").hidden = false;
+  });
+  $("m-no").addEventListener("click", () => { $("m-confirm").hidden = true; });
+  $("m-yes").addEventListener("click", () => { $("m-confirm").hidden = true; finish(); });
+
+  function finish() {
+    if (!M || M.done) return;
+    clearInterval(timerId);
+    M.done = true;
+    const secs = Math.min(M.limit, Math.floor((Date.now() - M.start) / 1000));
+    const byDom = {}, byScen = {};
+    let c = 0;
+    M.items.forEach((it) => {
+      const q = qById(it.id);
+      const ok = it.sel.length === q.answer.length && q.answer.every((a) => it.sel.includes(a));
+      it.ok = ok;
+      if (ok) c++;
+      recordAnswer(q.id, ok);
+      byDom[q.domain] = byDom[q.domain] || { n: 0, c: 0 }; byDom[q.domain].n++; if (ok) byDom[q.domain].c++;
+      byScen[q.scenario] = byScen[q.scenario] || { n: 0, c: 0 }; byScen[q.scenario].n++; if (ok) byScen[q.scenario].c++;
+    });
+    const hist = store.get("mocks", []);
+    hist.push({ t: Date.now(), n: M.items.length, c, byDom, byScen, scen: M.scens, secs });
+    store.set("mocks", hist);
+    save();
+    showResult(c, byDom, byScen, secs);
+  }
+
+  function showResult(c, byDom, byScen, secs) {
+    $("mock-run").hidden = true;
+    const res = $("mock-result");
+    res.hidden = false;
+    const pct = Math.round(100 * c / M.items.length);
+    const verdict = pct >= 80 ? "Comfortably in passing territory." : pct >= 70 ? "Borderline. Review your weakest domain before booking." : "Not there yet. Work the missed questions and the matching module sections.";
+    const rows = (obj, label) => Object.keys(obj).sort().map((k) => {
+      const v = obj[k], p = Math.round(100 * v.c / v.n);
+      return `<tr><td>${label(k)}</td><td class="num">${v.c}/${v.n}</td><td class="num">${p}%</td><td style="width:40%"><div class="bar ${p >= 80 ? "ok" : p < 70 ? "warn" : ""}"><i style="width:${p}%"></i></div></td></tr>`;
+    }).join("");
+    res.innerHTML = `<div class="facts"><div><b>${pct}%</b><span>${c} of ${M.items.length} correct</span></div>
+      <div><b>${Math.round(secs / 60)} min</b><span>time used</span></div>
+      <div><b>${M.items.filter((i) => i.flag).length}</b><span>flagged</span></div></div>
+      <p><strong>${verdict}</strong></p>
+      <h4>By domain</h4><div class="tbl"><table><thead><tr><th>Domain</th><th>Score</th><th>%</th><th></th></tr></thead><tbody>${rows(byDom, (k) => "D" + k + " · " + DOM[k])}</tbody></table></div>
+      <h4>By scenario</h4><div class="tbl"><table><thead><tr><th>Scenario</th><th>Score</th><th>%</th><th></th></tr></thead><tbody>${rows(byScen, (k) => "S" + k + " · " + SCEN[k])}</tbody></table></div>
+      <div class="row"><button class="btn" type="button" id="r-wrong">Review wrong answers</button><button class="btn ghost" type="button" id="r-all">Review all 60</button><button class="btn ghost" type="button" id="r-new">New mock</button></div>
+      <div id="r-list" style="margin-top:16px"></div>`;
+    const review = (onlyWrong) => {
+      const list = $("r-list");
+      list.innerHTML = "";
+      M.items.forEach((it, i) => {
+        if (onlyWrong && it.ok) return;
+        const ctl = renderQuestion(qById(it.id), list, { mode: "exam", order: it.order, initial: it.sel, label: `Q${i + 1}${it.flag ? " · flagged" : ""}` });
+        ctl.reveal(true);
+      });
+    };
+    $("r-wrong").addEventListener("click", () => review(true));
+    $("r-all").addEventListener("click", () => review(false));
+    $("r-new").addEventListener("click", () => { store.set(MOCK_KEY, null); M = null; res.hidden = true; $("mock-setup").hidden = false; refreshMockSetup(); });
+  }
+
+  // Restore an attempt in progress
+  const saved = store.get(MOCK_KEY, null);
+  if (saved && !saved.done) M = saved;
+  const initial = (location.hash || "").replace("#", "");
+  show(TABS.includes(initial) ? initial : "drill");
+  if (M && !M.done && initial === "mock") startRun();
+})();
+</script>
+</body>
+</html>

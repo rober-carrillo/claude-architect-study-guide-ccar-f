@@ -1,0 +1,114 @@
+# STARTER (TODO 5-7). Solution: solution/.github/workflows/claude-review.yml
+#
+# Two ways to run Claude as a PR reviewer. Keep one job, delete the other.
+#
+#   action-review   anthropics/claude-code-action@v1 drives Claude Code and posts inline comments itself
+#   script-review   our own review.py: per-file + integration passes with `claude -p`, structured
+#                   JSON findings, deduplicated against comments from earlier runs, posted by us
+#
+# Required secret: ANTHROPIC_API_KEY.  Blocking pre-merge checks use the synchronous API, never Batches.
+
+name: Claude PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  action-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # TODO(5): replace this prompt: per-file then cross-file passes, explicit report/skip
+          #          criteria, and "read existing review comments; don't repeat unresolved ones".
+          prompt: |
+            Review this PR and leave comments.
+          # TODO(6): allow read-only tools plus the inline-comment MCP tool and gh pr comment/diff/view.
+          claude_args: |
+            --max-turns 20
+            --allowedTools "Read"
+
+  script-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Collect findings this job posted on earlier commits
+        # Each comment we post carries a hidden marker with its fingerprint.
+        run: |
+          gh api "repos/${{ github.repository }}/pulls/$PR/comments" --paginate > comments.json
+          python - <<'PY'
+          import json, re
+          prior = []
+          for c in json.load(open("comments.json")):
+              m = re.search(r"<!-- claude-finding (\{.*?\}) -->", c.get("body", ""))
+              if m:
+                  prior.append(json.loads(m.group(1)))
+          json.dump(prior, open("prior.json", "w"))
+          print(f"{len(prior)} prior finding(s)")
+          PY
+
+      - name: Review (per-file passes + integration pass)
+        id: review
+        # TODO(7): pass the prior findings collected above so the review reports only new issues.
+        run: python labs/06-ci-review/review.py --repo . --base "$BASE_REF" --out review.json
+        continue-on-error: true   # exit 2 = high-severity findings; we still want to post them
+
+      - name: Post NEW findings as inline comments
+        if: hashFiles('review.json') != ''
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          result = json.load(open("review.json"))
+          for f in result["new"]:
+              marker = json.dumps({k: f[k] for k in ("file", "line", "severity", "category", "detected_pattern", "message", "fix", "confidence")})
+              body = (f"**{f['severity'].upper()} / {f['category']}** `{f['detected_pattern']}`\n\n"
+                      f"{f['message']}\n\n**Fix:** {f['fix']}\n\n<!-- claude-finding {marker} -->")
+              subprocess.run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/pulls/{os.environ['PR']}/comments",
+                              "-f", f"body={body}", "-f", f"path={f['file']}", "-F", f"line={f['line']}",
+                              "-f", "side=RIGHT", "-f", f"commit_id={os.environ['HEAD_SHA']}"], check=False)
+          print(f"posted {len(result['new'])}, skipped {len(result['still_open'])} still-open duplicates")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claude-review
+          path: review.json
+
+      - name: Fail on high severity
+        if: steps.review.outcome == 'failure'
+        run: exit 1

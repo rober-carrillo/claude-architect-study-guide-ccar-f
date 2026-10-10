@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain 3 · Claude Code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="d3" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Domain 3" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Domain 3 · Claude Code Configuration &amp; Workflows</p>
+  <h1>Configuring Claude Code for a team</h1>
+  <p class="lede">CLAUDE.md hierarchy, path rules, commands and skills, plan mode, iterative refinement, and running Claude Code in CI. One candidate's lowest-scoring domain: the questions are precise about <em>where</em> things go.</p>
+  <div class="facts"><div><b>20%</b><span>of scored items</span></div><div><b>6</b><span>task statements</span></div><div><b>2 h</b><span>suggested study time</span></div></div><div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="layout" data-tag="3.1" data-label="Where everything lives">
+  <div class="sec-head"><span class="tag">Task 3.1</span><h2 class="sec">Where everything lives</h2></div>
+<div class="tree"><span class="d">~/.claude/</span>
+  CLAUDE.md               <span class="d"># personal, all projects (not shared)</span>
+  settings.json           <span class="d"># personal settings and permissions</span>
+  skills/  agents/  commands/   <span class="d"># personal versions of each</span>
+
+<span class="d">my-repo/</span>
+  CLAUDE.md               <span class="d"># team instructions, checked in</span>
+  .mcp.json               <span class="d"># project-scoped MCP servers, checked in</span>
+  <span class="d">.claude/</span>
+    settings.json         <span class="d"># team permissions and hooks, checked in</span>
+    settings.local.json   <span class="d"># your overrides, git-ignored</span>
+    rules/*.md            <span class="d"># topic rules, optionally scoped to path globs</span>
+    commands/review.md    <span class="d"># → /review slash command</span>
+    skills/deploy/SKILL.md <span class="d"># → skill, auto-invoked by description</span>
+    agents/reviewer.md    <span class="d"># → subagent</span>
+    hooks/format.sh
+  packages/api/CLAUDE.md  <span class="d"># loaded when Claude works in packages/api</span></div>
+</section>
+<section class="sheet" id="claudemd" data-tag="3.1" data-label="CLAUDE.md: layered memory">
+  <div class="sec-head"><span class="tag">Task 3.1</span><h2 class="sec">CLAUDE.md: layered memory</h2></div>
+<div class="tbl"><table>
+    <thead><tr><th>Level</th><th>Location</th><th>Shared via git?</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td>Enterprise / managed</td><td>OS-level policy path</td><td>Deployed by IT</td><td>Org-wide rules that users can't override</td></tr>
+      <tr><td>User</td><td><code>~/.claude/CLAUDE.md</code></td><td>No</td><td>Your personal preferences across every project</td></tr>
+      <tr><td>Project</td><td><code>./CLAUDE.md</code> or <code>./.claude/CLAUDE.md</code></td><td>Yes</td><td>Build and test commands, conventions, architecture notes</td></tr>
+      <tr><td>Subdirectory</td><td><code>pkg/x/CLAUDE.md</code></td><td>Yes</td><td>Module-specific rules, loaded on demand when Claude works there</td></tr>
+      <tr><td>Path-scoped rules</td><td><code>.claude/rules/*.md</code> with a <code>paths:</code> glob</td><td>Yes</td><td>Rules for a file type wherever it lives (e.g. every <code>**/*.test.ts</code>)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="codewrap"><div class="fname"><b>CLAUDE.md</b><span>project level</span></div><pre class="code"><code class="language-markdown"># Payments service
+
+## Commands
+- Test: `pnpm test` (single file: `pnpm test path/to/file`)
+- Lint: `pnpm lint --fix`
+
+## Conventions
+- All money is integer cents. Never use floats for currency.
+- New endpoints need an OpenAPI entry in docs/api.yaml.
+
+## Imports
+@docs/architecture.md
+@.claude/rules/testing.md</code></pre></div>
+  <div class="codewrap"><div class="fname"><b>.claude/rules/testing.md</b><span>applies only to matching files</span></div><pre class="code"><code class="language-markdown">---
+paths:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+---
+Use the factories in test/factories. Never hit the real Stripe API in tests.</code></pre></div>
+
+  <div class="call trap"><b>Trap</b>
+  <p>"A new teammate isn't getting the team's coding rules" → check whether the rules were put in someone's <strong>user-level</strong> <code>~/.claude/CLAUDE.md</code>, which is never shared. Team rules belong in the project file, committed. Use <code>/memory</code> to see which memory files are loaded.</p></div>
+  <div class="quiz-embed" data-tasks="3.1" data-count="3"></div>
+</section>
+<section class="sheet" id="modular" data-tag="3.1" data-label="Modular CLAUDE.md">
+  <div class="sec-head"><span class="tag">Task 3.1</span><h2 class="sec">Keeping CLAUDE.md modular, and diagnosing it</h2>
+  <p>A 900-line root CLAUDE.md costs context in every session and is hard to maintain. There are three ways to break it up.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Technique</th><th>What it does</th><th>Use when</th></tr></thead>
+    <tbody>
+      <tr><td><code>@path/to/file.md</code> import</td><td>Pulls another file into that CLAUDE.md</td><td>Each package's CLAUDE.md imports only the standards its maintainers say are relevant</td></tr>
+      <tr><td><code>.claude/rules/*.md</code></td><td>Topic files (<code>testing.md</code>, <code>api-conventions.md</code>, <code>deployment.md</code>) instead of one monolith</td><td>Organizing by topic; add <code>paths:</code> to load conditionally</td></tr>
+      <tr><td>Subdirectory <code>CLAUDE.md</code></td><td>Loaded when Claude works inside that directory</td><td>Conventions that really belong to one directory</td></tr>
+    </tbody>
+  </table></div>
+  <div class="codewrap"><div class="fname"><b>packages/billing/CLAUDE.md</b><span>selective imports</span></div><pre class="code"><code class="language-markdown"># Billing package
+Owned by the payments team. Money is integer cents.
+
+@../../standards/api-errors.md
+@../../standards/pci-logging.md
+&lt;!-- deliberately NOT importing frontend-style.md --&gt;
+</code></pre></div>
+  <h3>Diagnosing "Claude behaves differently for different people"</h3>
+  <ol>
+    <li>Run <code>/memory</code> in both sessions to see <em>which</em> memory files each one loaded.</li>
+    <li>If the instructions are in someone's <code>~/.claude/CLAUDE.md</code>, move them to the project file, which is committed.</li>
+    <li>If they're in a subdirectory CLAUDE.md, check whether the other person is working in that directory.</li>
+  </ol>
+  <div class="quiz-embed" data-tasks="3.1" data-count="4"></div>
+</section>
+<section class="sheet" id="pathrules" data-tag="3.3" data-label="Path-scoped rules">
+  <div class="sec-head"><span class="tag">Task 3.3</span><h2 class="sec">Path-scoped rules</h2>
+  <p>Conventions that follow a <em>file type</em>, wherever those files live.</p></div>
+  <div class="codewrap"><div class="fname"><b>.claude/rules/terraform.md</b><span>loads only when editing matching files</span></div><pre class="code"><code class="language-markdown">---
+paths: ["terraform/**/*"]
+---
+- Every resource needs `owner` and `cost_center` tags.
+- Never hard-code account IDs; use data sources.
+- Run `terraform fmt` and `tflint` before proposing a plan.</code></pre></div>
+  <div class="codewrap"><div class="fname"><b>.claude/rules/tests.md</b><span>tests are scattered next to source</span></div><pre class="code"><code class="language-markdown">---
+paths: ["**/*.test.tsx", "**/*.test.ts"]
+---
+- Use React Testing Library queries by role, never by class name.
+- One behaviour per `it()`. Use factories from test/factories.</code></pre></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Mechanism</th><th>Loads</th><th>Good for</th><th>Bad for</th></tr></thead>
+    <tbody>
+      <tr><td>Rules with <code>paths</code> glob</td><td>Automatically, when a matching file is edited</td><td>Conventions by file type across many directories</td><td>Rules that must apply everywhere (put those in CLAUDE.md)</td></tr>
+      <tr><td>Subdirectory CLAUDE.md</td><td>When working in that directory</td><td>One self-contained area</td><td>Test files spread across 40 directories</td></tr>
+      <tr><td>Root CLAUDE.md sections</td><td>Always</td><td>Universal standards</td><td>Area-specific rules (relies on Claude inferring which section applies; wastes tokens)</td></tr>
+      <tr><td>Skills</td><td>On demand, when Claude or the user invokes them</td><td>Task workflows</td><td>Conventions that must apply <em>automatically</em> by path</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="3.3" data-count="3"></div>
+</section>
+<section class="sheet" id="settings" data-tag="3.1" data-label="Settings and permissions">
+  <div class="sec-head"><span class="tag">Task 3.1</span><h2 class="sec">Settings and permissions</h2><p>Not an official task statement, but you'll need it to read config snippets in questions.</p></div>
+<div class="codewrap"><div class="fname"><b>.claude/settings.json</b><span>team-shared</span></div><pre class="code"><code class="language-json">{
+  "permissions": {
+    "allow": ["Bash(pnpm test:*)", "Bash(pnpm lint:*)", "Read", "mcp__jira__get_issue"],
+    "ask":   ["Bash(git push:*)"],
+    "deny":  ["Read(./.env)", "Read(./secrets/**)", "Bash(curl:*)"]
+  },
+  "env": { "NODE_ENV": "development" }
+}</code></pre></div>
+  <p>Precedence, highest first: managed policy → command-line flags → <code>.claude/settings.local.json</code> → <code>.claude/settings.json</code> → <code>~/.claude/settings.json</code>. A <strong>deny</strong> rule wins over an allow rule.</p>
+</section>
+<section class="sheet" id="skills" data-tag="3.2" data-label="Skills">
+  <div class="sec-head"><span class="tag">Task 3.2</span><h2 class="sec">Skills: packaged expertise, loaded on demand</h2></div>
+<p>A skill is a folder with a <code>SKILL.md</code> plus any scripts, templates or reference docs it needs. Only the <code>name</code> and <code>description</code> sit in context all the time. The body loads when Claude decides the skill is relevant, and the bundled files load only if the body points to them. This is called <strong>progressive disclosure</strong>, and it is why you can install many skills without filling the context window.</p>
+  <div class="codewrap"><div class="fname"><b>.claude/skills/db-migration/SKILL.md</b><span>minimum skeleton</span></div><pre class="code"><code class="language-markdown">---
+name: db-migration
+description: Create and verify a Postgres schema migration. Use when the user asks to add,
+  change or drop a table, column or index.
+allowed-tools: Read, Write, Bash(pnpm migrate:*)
+---
+# Writing a migration
+
+1. Generate the file: `pnpm migrate:new &lt;name&gt;`
+2. Write both `up` and `down`. Follow the template in [template.sql](template.sql).
+3. Run `scripts/check_locks.py &lt;file&gt;` and fix any table-lock warning
+   before continuing. See [reference/locking.md](reference/locking.md).
+4. Run `pnpm migrate:up` then `pnpm migrate:down` to prove it reverses.</code></pre></div>
+  <div class="tree"><span class="d">.claude/skills/db-migration/</span>
+  SKILL.md             <span class="d"># required: frontmatter + instructions</span>
+  template.sql         <span class="d"># loaded only if referenced and needed</span>
+  reference/locking.md
+  scripts/check_locks.py  <span class="d"># executed, not read into context</span></div>
+  <p>The <code>description</code> decides whether the skill ever fires, so write it as "what it does + when to use it", in the words a user would actually say. Newer builds also accept frontmatter such as <code>context: fork</code> (run the skill in an isolated subagent) and <code>disable-model-invocation</code> (only the user can trigger it).</p>
+</section>
+<section class="sheet" id="skilldeep" data-tag="3.2" data-label="Skill frontmatter">
+  <div class="sec-head"><span class="tag">Task 3.2</span><h2 class="sec">Skill frontmatter and scope, in depth</h2>
+  <p>The three frontmatter keys the official guide names, and how personal variants work.</p></div>
+  <div class="codewrap"><div class="fname"><b>.claude/skills/codebase-map/SKILL.md</b><span>isolated, restricted, prompts for input</span></div><pre class="code"><code class="language-markdown">---
+name: codebase-map
+description: Map an unfamiliar module and summarize its entry points, data flow and risks.
+  Use when someone asks how a part of the codebase works.
+context: fork
+allowed-tools: Read, Grep, Glob
+argument-hint: [module-path]
+---
+Map the module at $ARGUMENTS. Return: entry points, key types, external calls,
+and the three riskiest functions, each with file:line. Under 40 lines.</code></pre></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Key</th><th>Effect</th><th>Reach for it when</th></tr></thead>
+    <tbody>
+      <tr><td><code>context: fork</code></td><td>Runs the skill in an isolated sub-agent; only the result returns to the main session</td><td>The skill produces verbose output (codebase analysis) or exploratory noise (brainstorming alternatives)</td></tr>
+      <tr><td><code>allowed-tools</code></td><td>Restricts which tools the skill may use (the exam guide's wording; current Claude Code docs describe it as the tools the skill may use <em>without asking permission</em>)</td><td>Prevent destructive actions, e.g. a doc-generation skill limited to file writes</td></tr>
+      <tr><td><code>argument-hint</code></td><td>Shows what argument is expected</td><td>Developers often invoke it without the required parameter</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Scope and personal variants</h3>
+  <ul>
+    <li><code>.claude/skills/</code> and <code>.claude/commands/</code> in the repo: shared with the team via version control.</li>
+    <li><code>~/.claude/skills/</code> and <code>~/.claude/commands/</code>: personal.</li>
+    <li>Want your own version of a team skill? Create a personal one with a <strong>different name</strong> (e.g. <code>review-strict</code>) so you don't affect teammates.</li>
+  </ul>
+  <h3>Skill or CLAUDE.md?</h3>
+  <p><strong>CLAUDE.md</strong> is always loaded, for universal standards. <strong>Skills</strong> are loaded on demand, for task-specific workflows. Putting a 200-line release procedure in CLAUDE.md taxes every unrelated session.</p>
+  <div class="quiz-embed" data-tasks="3.2" data-count="4"></div>
+</section>
+<section class="sheet" id="commands" data-tag="3.2" data-label="Slash commands">
+  <div class="sec-head"><span class="tag">Task 3.2</span><h2 class="sec">Slash commands: user-triggered prompts</h2></div>
+<div class="codewrap"><div class="fname"><b>.claude/commands/review.md</b><span>→ /review 1234</span></div><pre class="code"><code class="language-markdown">---
+description: Review a PR against team standards
+argument-hint: [pr-number]
+allowed-tools: Bash(gh pr diff:*), Read, Grep
+---
+Review PR #$ARGUMENTS. Check against the standards in CLAUDE.md.
+Report only bugs and security issues, each as file:line, severity, and a one-line fix.
+Skip style nits the linter already catches.</code></pre></div>
+  <p>Commands in <code>.claude/commands/</code> are shared with the team through git. Ones in <code>~/.claude/commands/</code> are personal.</p>
+</section>
+<section class="sheet" id="planmode" data-tag="3.4" data-label="Plan mode">
+  <div class="sec-head"><span class="tag">Task 3.4</span><h2 class="sec">Plan mode</h2></div>
+<p>Plan mode (Shift+Tab to cycle modes, or <code>--permission-mode plan</code>) lets Claude read and explore but not edit or run anything that changes state. It finishes with a written plan for you to approve before any code changes.</p>
+  <div class="two">
+    <div class="good"><h4>Use plan mode</h4><ul>
+      <li>Changes touching many files or services</li>
+      <li>Unfamiliar codebase, or several valid approaches</li>
+      <li>Architectural decisions such as migrations, framework swaps or new module boundaries</li>
+      <li>When you want a reviewable plan before any edits happen</li>
+    </ul></div>
+    <div class="bad"><h4>Skip it</h4><ul>
+      <li>Small, well-understood fixes (a typo, a one-function bug with a clear stack trace)</li>
+      <li>Changes where the diff is the plan</li>
+    </ul></div>
+  </div>
+  <div class="call trap"><b>Trap</b><p>Plan mode is a <em>workflow</em> choice, not a safety control. To guarantee Claude can never touch production, use deny rules or hooks. Telling it to "stay in plan mode" is not enforcement.</p></div>
+</section>
+<section class="sheet" id="explore" data-tag="3.4" data-label="Plan mode & Explore">
+  <div class="sec-head"><span class="tag">Task 3.4</span><h2 class="sec">Plan mode, direct execution and the Explore subagent</h2>
+  <p>The decision is about how much is unknown, not about how many lines change.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Task</th><th>Mode</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Add a date-validation conditional to one function</td><td>Direct</td><td>Clear scope, one obvious approach</td></tr>
+      <tr><td>Fix a bug with a clear stack trace in one file</td><td>Direct</td><td>The trace tells you where and what</td></tr>
+      <tr><td>Migrate a logging library used in 45+ files</td><td>Plan</td><td>Many files, ordering and compatibility decisions</td></tr>
+      <tr><td>Split a monolith into services</td><td>Plan</td><td>Architectural decisions: service boundaries, dependencies</td></tr>
+      <tr><td>Choose between two integration approaches with different infrastructure needs</td><td>Plan</td><td>Several valid approaches; compare before committing</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Combine them:</strong> plan the library migration in plan mode, approve the plan, then execute it directly. That's a common correct answer.</p>
+  <h3>The Explore subagent</h3>
+  <p>Discovery is verbose: dozens of Greps and Reads. Run it in the <strong>Explore subagent</strong> so that output stays in the subagent's context and only a summary returns. This prevents the main conversation from filling up during multi-phase tasks.</p>
+  <div class="call trap"><b>Trap</b><p>"Start in direct execution and switch to plan mode if it gets complicated" is wrong when the complexity is <em>already stated</em> in the task. "Let the implementation reveal the boundaries" means expensive rework later.</p></div>
+  <div class="quiz-embed" data-tasks="3.4" data-count="4"></div>
+</section>
+<section class="sheet" id="refine" data-tag="3.5" data-label="Iterative refinement">
+  <div class="sec-head"><span class="tag">Task 3.5</span><h2 class="sec">Iterative refinement techniques</h2>
+  <p>How to steer Claude when the first result isn't right.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Technique</th><th>Use when</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>2–3 concrete input/output examples</td><td>Prose descriptions are interpreted inconsistently</td><td>Show <code>"Smith, J."</code> → <code>{"last":"Smith","first_initial":"J"}</code> and two edge cases</td></tr>
+      <tr><td>Test-driven iteration</td><td>Behaviour can be specified as tests</td><td>Write tests for expected behaviour, edge cases and performance first; share the failures each round</td></tr>
+      <tr><td>Interview pattern</td><td>An unfamiliar domain where you may not know the right questions</td><td>"Before implementing the cache, ask me what you need to know." Surfaces invalidation strategy and failure modes</td></tr>
+      <tr><td>Specific failing test case</td><td>An edge case is mishandled</td><td>"Input row with <code>null</code> email → expected: skip and log, actual: crash"</td></tr>
+      <tr><td>All issues in one message</td><td>The fixes <strong>interact</strong> (changing the schema affects the API and the migration)</td><td>One detailed message listing all three, so the fixes are coherent</td></tr>
+      <tr><td>One issue at a time</td><td>The issues are <strong>independent</strong></td><td>Fix the typo, then the unrelated timeout</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="3.5" data-count="3"></div>
+</section>
+<section class="sheet" id="headless" data-tag="3.6" data-label="Headless mode: claude -p">
+  <div class="sec-head"><span class="tag">Task 3.6</span><h2 class="sec">Headless mode: <code>claude -p</code></h2></div>
+<p><code>-p</code> (print) runs a single prompt non-interactively and exits. Without it, Claude Code waits for input and the CI job hangs.</p>
+  <div class="codewrap"><div class="fname"><b>ci/review.sh</b><span>headless review step</span></div><pre class="code"><code class="language-bash">git diff origin/main...HEAD &gt; /tmp/pr.diff
+
+claude -p "Review the diff in /tmp/pr.diff against CLAUDE.md. Report only bugs and
+security issues. Each finding: file, line, severity (high|medium|low), message, fix." \
+  --output-format json \
+  --max-turns 8 \
+  --allowedTools "Read,Grep,Glob" \
+  &gt; review.json
+
+# review.json → script that posts inline PR comments</code></pre></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Flag</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>-p "…"</code></td><td>Non-interactive, single run</td></tr>
+      <tr><td><code>--output-format json</code> / <code>stream-json</code></td><td>Machine-readable result, plus cost, session id and turn count</td></tr>
+      <tr><td><code>--json-schema</code></td><td>In recent versions, validates the final answer against a schema for structured findings</td></tr>
+      <tr><td><code>--allowedTools</code> / <code>--disallowedTools</code></td><td>Least privilege for the runner</td></tr>
+      <tr><td><code>--max-turns</code></td><td>Bounds the run time and cost</td></tr>
+      <tr><td><code>--append-system-prompt</code></td><td>Adds CI-specific instructions on top of the defaults</td></tr>
+      <tr><td><code>--resume &lt;id&gt;</code> / <code>--continue</code></td><td>Continue an earlier session</td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="sheet" id="actions" data-tag="3.6" data-label="GitHub Actions">
+  <div class="sec-head"><span class="tag">Task 3.6</span><h2 class="sec">GitHub Actions</h2></div>
+<div class="codewrap"><div class="fname"><b>.github/workflows/claude-review.yml</b><span>set up via /install-github-app</span></div><pre class="code"><code class="language-yaml">name: Claude PR review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR using the standards in CLAUDE.md.
+            Comment only on bugs and security issues, inline at the exact line.
+            Earlier review comments are below; do not repeat ones still unresolved.
+          claude_args: "--max-turns 10 --allowedTools Read,Grep,Glob"</code></pre></div>
+  <p>The action reads the repo's <code>CLAUDE.md</code>, so review standards live in one versioned place shared by local sessions and CI.</p>
+</section>
+<section class="sheet" id="cipatterns" data-tag="3.6" data-label="Review and test-generation patterns">
+  <div class="sec-head"><span class="tag">Task 3.6</span><h2 class="sec">Review and test-generation patterns</h2></div>
+<ul>
+    <li><strong>Independent reviewer.</strong> The session that wrote the code is a poor judge of it, because it carries its own reasoning forward. Review in a fresh session or a separate instance with no access to the author's chain of thought.</li>
+    <li><strong>Split large reviews.</strong> One pass per file for local bugs, then one cross-file pass for integration issues (changed signatures, data flow). A single pass over 30 files gives shallow, inconsistent attention.</li>
+    <li><strong>No duplicate comments on re-runs.</strong> Pass prior findings into the prompt and ask for new or still-unresolved issues only.</li>
+    <li><strong>Reduce false positives at the criteria level.</strong> Explicit in-scope and out-of-scope lists, and a severity rubric with examples. If one category is noisy, disable that category until it is fixed, so developers don't learn to ignore every comment.</li>
+    <li><strong>Test generation.</strong> Put the existing tests and fixtures in context (or point at them in CLAUDE.md) so new tests follow conventions and don't duplicate coverage. Run the tests in the loop: generate, run, read failures, fix.</li>
+    <li><strong>Batch vs sync.</strong> Blocking pre-merge checks run synchronously. Nightly audits of the whole repo can use the Batch API at lower cost.</li>
+  </ul>
+  <div class="call trap"><b>Trap</b><p>Asking the model to "self-review its own changes before finishing" in the same context is weaker than an independent review pass. Asking it to report only "high-confidence" findings doesn't fix false positives either, because self-reported confidence isn't calibrated. Tighten the criteria instead.</p></div>
+  <div class="quiz-embed" data-tasks="3.6" data-count="5"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>

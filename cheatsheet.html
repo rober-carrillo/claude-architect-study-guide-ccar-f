@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cheat Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-base="" data-page="cheat">
+<div class="shell">
+<nav class="toc" data-auto data-title="Cheat sheet" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Review · 20 minutes</p>
+  <h1>Cheat sheet</h1>
+  <p class="lede">The mechanism lookup, the harder and easy-to-miss facts, and the one-line recall list. Read this the night before.</p>
+  
+</section>
+
+<section class="sheet" id="decide" data-tag="→" data-label="Which mechanism?">
+  <div class="sec-head"><span class="tag">&rarr;</span><h2 class="sec">Which mechanism?</h2>
+  <p>Many questions come down to picking the right layer. Use this as the lookup.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>You need…</th><th>Use</th><th>Because</th></tr></thead>
+    <tbody>
+      <tr><td>Standing conventions for every session</td><td><code>CLAUDE.md</code></td><td>Always loaded; versioned with the code</td></tr>
+      <tr><td>Rules for one file type wherever it lives</td><td><code>.claude/rules/</code> with <code>paths</code></td><td>Applies only when relevant files are touched</td></tr>
+      <tr><td>A multi-step procedure Claude should pick up when relevant</td><td>Skill</td><td>Loaded on demand by description; can bundle scripts</td></tr>
+      <tr><td>A prompt the user triggers by name</td><td>Slash command</td><td>Explicit and repeatable; takes <code>$ARGUMENTS</code></td></tr>
+      <tr><td>A rule that must <em>never</em> be broken</td><td>Hook or permission deny rule</td><td>Code runs every time; prompts don't</td></tr>
+      <tr><td>Isolating noisy work, or working in parallel</td><td>Subagent</td><td>Own context; only the summary comes back</td></tr>
+      <tr><td>Access to an external system</td><td>MCP server</td><td>Standard interface, reusable across hosts</td></tr>
+      <tr><td>Read-only reference data the agent keeps probing for</td><td>MCP resource</td><td>Read once instead of exploratory tool calls</td></tr>
+      <tr><td>Agreeing on an approach before a big change</td><td>Plan mode</td><td>Read-only exploration, then a plan to approve</td></tr>
+      <tr><td>Guaranteed parseable JSON</td><td>Structured outputs or forced <code>tool_choice</code></td><td>Schema-constrained; prompt-only JSON can break</td></tr>
+      <tr><td>Correct values, not only valid JSON</td><td>Code validation + retry with the error</td><td>Schemas can't check meaning</td></tr>
+      <tr><td>Cheap bulk processing nobody waits on</td><td>Message Batches API</td><td>Up to 50% off, results within 24h</td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="sheet" id="hard" data-tag="+" data-label="Harder parts">
+  <div class="sec-head"><span class="tag">+</span><h2 class="sec">Harder parts and easy-to-miss facts</h2>
+  <p>Points from the official task statements that the sections above don't cover, plus what candidates reported finding hard. <span class="src o">Official</span> means it is stated in the exam guide. <span class="src c">Candidates</span> means it comes from people who sat the exam or published prep material.</p></div>
+
+  <h3>Orchestration details</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> The coordinator should <strong>choose which subagents to call based on the query</strong>, not run every query through the full pipeline.</li>
+    <li><span class="src o">Official</span> <strong>Iterative refinement loop</strong>: the coordinator checks the synthesis for gaps, sends targeted follow-up queries to search and analysis, and runs synthesis again until coverage is enough.</li>
+    <li><span class="src o">Official</span> Coordinator prompts to subagents should state the <strong>goal and quality criteria</strong>, not step-by-step procedures, so subagents can adapt.</li>
+    <li><span class="src o">Official</span> Divide research scope by <strong>distinct subtopic or source type</strong> per subagent, so they don't duplicate each other.</li>
+    <li><span class="src o">Official</span> Model-driven tool choice (Claude decides the next call) is a different thing from a pre-configured decision tree. Know which one a scenario describes.</li>
+    <li><span class="src o">Official</span> <strong>Crash recovery</strong>: each agent writes its state to a known location, and on resume the coordinator loads a <strong>manifest</strong> and injects that state into the agents' prompts.</li>
+    <li><span class="src o">Official</span> The Messages API is stateless, so every request must carry the complete conversation history.</li>
+  </ul>
+
+  <h3>Sessions</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> <code>--resume &lt;session-name&gt;</code> continues a <strong>named</strong> session. Use it when the earlier context is still mostly valid.</li>
+    <li><span class="src o">Official</span> When resuming after code changed, <strong>tell the session which files changed</strong> so it re-analyzes only those, instead of exploring everything again.</li>
+    <li><span class="src o">Official</span> If the earlier tool results are stale, a <strong>fresh session with an injected structured summary</strong> is more reliable than resuming.</li>
+    <li><span class="src o">Official</span> <code>fork_session</code> creates independent branches from one shared analysis, for example to compare two testing strategies.</li>
+    <li><span class="src c">Candidates</span> Context is <em>full</em>: use <code>/compact</code>. Exploring <em>two alternatives</em>: fork. Distractors swap these two.</li>
+  </ul>
+
+  <h3>Tools and MCP</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> <strong>System prompt wording can override good tool descriptions.</strong> A keyword-heavy instruction such as "always analyze the content" can steer Claude toward <code>analyze_content</code>. Review the system prompt as well as the descriptions.</li>
+    <li><span class="src o">Official</span> Splitting tools and merging them can both be correct. <strong>Split</strong> a vague generic tool into purpose-specific ones (<code>analyze_document</code> → <code>extract_data_points</code>, <code>summarize_content</code>, <code>verify_claim_against_source</code>). <strong>Merging</strong> into one tool is "valid but more effort than a first step".</li>
+    <li><span class="src o">Official</span> Replace generic tools with <strong>constrained</strong> ones, e.g. <code>fetch_url</code> → <code>load_document</code> that validates the URL.</li>
+    <li><span class="src o">Official</span> 18 tools on one agent is too many. 4–5 per role, plus a few cross-role tools for frequent needs.</li>
+    <li><span class="src o">Official</span> Forced <code>tool_choice</code> makes one step happen <em>first</em> (e.g. <code>extract_metadata</code>). Later steps then run in <strong>follow-up turns</strong>.</li>
+    <li><span class="src o">Official</span> Use PostToolUse hooks to <strong>normalize mixed formats</strong> from different MCP tools (Unix timestamps vs ISO 8601, numeric status codes) before the model sees them.</li>
+    <li><span class="src o">Official</span> Business-rule errors should carry <code>retryable: false</code> and a <strong>customer-friendly explanation</strong> the agent can pass on.</li>
+    <li><span class="src c">Candidates</span> <code>isError: true</code> means the source <em>couldn't be reached</em>. <code>isError: false</code> with no results means it was reached and <em>nothing matched</em>. The coordinator should respond to each in opposite ways.</li>
+  </ul>
+
+  <h3>Claude Code configuration (the lowest-scoring domain for one candidate)</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> Skill frontmatter to know: <code>context: fork</code> (runs in an isolated subagent so verbose output stays out of the main session), <code>allowed-tools</code> (limits what the skill can do), <code>argument-hint</code> (prompts for a missing argument).</li>
+    <li><span class="src o">Official</span> To change a team skill just for yourself, create a <strong>personal variant with a different name</strong> in <code>~/.claude/skills/</code> so teammates aren't affected.</li>
+    <li><span class="src o">Official</span> Skills are loaded <strong>on demand</strong>, so they aren't reliable for conventions that must apply <em>automatically</em> by file path. Use <code>.claude/rules/</code> globs for that, and CLAUDE.md for universal standards.</li>
+    <li><span class="src o">Official</span> <code>@import</code> in a package's CLAUDE.md pulls in only the standards files relevant to that package.</li>
+    <li><span class="src o">Official</span> Personal MCP servers live in <code>~/.claude.json</code>. Shared ones go in <code>.mcp.json</code>.</li>
+    <li><span class="src o">Official</span> The <strong>Explore subagent</strong> handles verbose discovery and returns a summary, so the main context isn't exhausted.</li>
+    <li><span class="src o">Official</span> A common correct pattern is <strong>plan mode for investigation, then direct execution</strong> for the planned change.</li>
+  </ul>
+
+  <h3>Iterating with Claude</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> <strong>Interview pattern</strong>: in an unfamiliar domain, have Claude ask you questions first (cache invalidation, failure modes) before it implements anything.</li>
+    <li><span class="src o">Official</span> <strong>Test-driven iteration</strong>: write the tests first (behaviour, edge cases, performance), then share the failures to guide each round.</li>
+    <li><span class="src o">Official</span> Problems that <strong>interact</strong> go in one detailed message. <strong>Independent</strong> problems can be fixed one at a time.</li>
+    <li><span class="src o">Official</span> When prose is read inconsistently, 2–3 concrete input/output examples work better than more prose.</li>
+  </ul>
+
+  <h3>Structured output and review</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> Put <strong>format normalization rules in the prompt</strong> alongside a strict schema, for messy source formatting (dates, units).</li>
+    <li><span class="src o">Official</span> Few-shot examples also <strong>reduce hallucination</strong> in extraction, such as informal measurements, varied layouts, or required fields coming back empty.</li>
+    <li><span class="src o">Official</span> A retry message should include <strong>the original document, the failed extraction and the specific error</strong>.</li>
+    <li><span class="src o">Official</span> A <code>detected_pattern</code> field on review findings lets you analyze <strong>which patterns developers dismiss</strong> and find false-positive sources.</li>
+    <li><span class="src o">Official</span> An independent review instance beats self-review <em>and</em> beats extended thinking in the same session.</li>
+    <li><span class="src o">Official</span> "Run three passes and keep issues found twice" is a distractor. It <strong>hides real bugs</strong> that only show up some of the time.</li>
+    <li><span class="src o">Official</span> A larger context window doesn't fix <strong>attention dilution</strong>. Splitting into passes does.</li>
+  </ul>
+
+  <h3>Batch arithmetic</h3>
+  <p><span class="src o">Official</span> If results are promised within 30 hours and a batch can take up to 24, you must <strong>submit at least every 4–6 hours</strong>. The worst case is a document that arrives just after a submission, waits for the next window, and then takes the full 24 hours. With 4-hour windows that is at most 4 + 24 = 28 h, leaving 2 h spare. Also, <strong>refine the prompt on a sample first</strong> so fewer documents need resubmitting.</p>
+
+  <h3>The confidence paradox</h3>
+  <div class="call trap"><b>Looks contradictory, isn't</b>
+  <p>The guide calls self-reported confidence <strong>unreliable as an escalation trigger</strong>, yet it also recommends <strong>field-level confidence scores for routing human review</strong>. The difference is <strong>calibration</strong>. A raw "confidence 8/10" used to decide escalation is wrong. Field-level scores whose thresholds were <em>tuned against a labelled validation set</em>, then used to prioritise reviewer time, are right. If an answer mentions calibration with labelled data, it's probably the good one.</p></div>
+
+  <h3>Escalation fine print</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> Explicit request for a human: escalate <strong>right away, without investigating first</strong>.</li>
+    <li><span class="src o">Official</span> Frustrated, but no request for a human, and the issue is easy: acknowledge it and offer to resolve it. Escalate <strong>only if they ask again</strong>.</li>
+    <li><span class="src o">Official</span> The guide's policy-gap example is a customer asking to match a <strong>competitor's</strong> price when the policy only covers your own site's price changes. Escalate.</li>
+  </ul>
+
+  <h3>Synthesis and provenance</h3>
+  <ul class="hl">
+    <li><span class="src o">Official</span> Require <strong>publication or collection dates</strong> so that numbers from different years aren't treated as contradictions.</li>
+    <li><span class="src o">Official</span> Reports should separate <strong>well-established</strong> from <strong>contested</strong> findings.</li>
+    <li><span class="src o">Official</span> Present each content type in its natural format: financial data as tables, news as prose, technical findings as lists. Don't force everything into one format.</li>
+    <li><span class="src o">Official</span> To counter lost-in-the-middle, put a <strong>key-findings summary first</strong> and use explicit section headers.</li>
+    <li><span class="src o">Official</span> If the downstream agent has a small context budget, change the <strong>upstream</strong> agent to return structured facts and citations instead of verbose reasoning.</li>
+  </ul>
+
+  <h3>Not on the exam</h3>
+  <p><span class="src o">Official</span> Fine-tuning, API authentication/OAuth and key rotation, billing, rate limits and pricing calculations, hosting MCP servers, streaming/SSE, computer use, vision, embeddings and vector DBs, cloud-provider setup, tokenization, and prompt-caching details beyond knowing it exists.</p>
+
+  <h3>Exam-taking</h3>
+  <ul class="hl">
+    <li><span class="src c">Candidates</span> Two minutes per item goes fast. <strong>Flag and move on.</strong> One candidate flagged 7 of the first 10 and changed about half on review.</li>
+    <li><span class="src c">Candidates</span> The real exam shares <strong>no questions</strong> with the practice test. Rising practice scores may only mean you've memorized those questions.</li>
+    <li><span class="src c">Candidates</span> Domain 1 ideas (hub-and-spoke, stop_reason, parallel Task calls) also appear as <strong>distractors in other domains</strong>.</li>
+    <li><span class="src c">Candidates</span> Results took about 7–10 days for one candidate.</li>
+  </ul>
+
+  <h4>Sources</h4>
+  <ul class="small">
+    <li><a href="https://everpath-course-content.s3-accelerate.amazonaws.com/instructor/6nizmqk8tpzpfjvt6qmmav7rh/public/1783542750/Claude+Certified+Architect+%E2%80%93+Foundations+Exam+Guide.pdf">Claude Certified Architect – Foundations Exam Guide, v1.0 (July 2026)</a></li>
+    <li><a href="https://verygood.ventures/blog/passing-the-claude-certified-architect-exam/">Very Good Ventures: Passing the Claude Certified Architect Exam</a></li>
+    <li><a href="https://github.com/hamzafarooq/claude-certified-architect">hamzafarooq/claude-certified-architect (community study notes)</a></li>
+  </ul>
+</section>
+<section class="sheet" id="recall" data-tag="!" data-label="Night-before recall">
+  <div class="sec-head"><span class="tag">!</span><h2 class="sec">Night-before recall</h2>
+  <p>One line each. If any of these surprise you, reread that section.</p></div>
+  <ul class="recall">
+    <li>The loop continues on <code>stop_reason == "tool_use"</code> and ends on <code>"end_turn"</code>.</li>
+    <li>Tool results go in a user message, matched by <code>tool_use_id</code>, all in one message per turn.</li>
+    <li>Subagents start with an empty context. Pass everything explicitly.</li>
+    <li>Parallel subagents come from several Task calls in a single turn.</li>
+    <li>Only a subagent's final message returns to the coordinator.</li>
+    <li>Critical business rules belong in hooks, not prompts.</li>
+    <li>PreToolUse can allow, deny, ask, or modify. Exit code 2 blocks a shell hook.</li>
+    <li>User <code>~/.claude/CLAUDE.md</code> isn't shared. Project <code>CLAUDE.md</code> is.</li>
+    <li><code>.claude/settings.local.json</code> is personal and git-ignored.</li>
+    <li>Skills: only name and description stay loaded until the skill is used.</li>
+    <li><code>.mcp.json</code> = project scope. Secrets go through <code>${ENV}</code>.</li>
+    <li>MCP tools appear as <code>mcp__server__tool</code>.</li>
+    <li>MCP tools are model-controlled, resources app-controlled, prompts user-controlled.</li>
+    <li>stdio servers must never write logs to stdout.</li>
+    <li>Tool errors: <code>isError: true</code> with category, retryability and next step.</li>
+    <li>Tool descriptions drive tool selection. Fix them first.</li>
+    <li>Schemas guarantee syntax, not semantics. Validate in code and retry with the error.</li>
+    <li>Nullable fields prevent fabrication.</li>
+    <li><code>tool_choice</code>: auto, any, tool (forced), none.</li>
+    <li>Batch API: cheaper, async, up to 24h, no in-request tool loop, <code>custom_id</code>.</li>
+    <li>Keep a persistent facts block. Summaries lose numbers.</li>
+    <li>CI needs <code>claude -p</code>, or the job hangs waiting for input.</li>
+    <li>Review in an independent session, not the one that wrote the code.</li>
+    <li>Escalate on explicit request, policy gap, authority limit or no progress. Not on sentiment.</li>
+    <li>Ambiguous identity: ask for another identifier. Never guess.</li>
+    <li>Partial failure: continue and annotate coverage. Don't swallow, don't abort.</li>
+    <li>Check accuracy per segment, and sample with stratification.</li>
+  </ul>
+  <div class="call note"><b>Before the exam</b><p>The exam facts here come from the official guide v1.0 (July 2026), which says it can change without notice. Before booking, check that you have the current version from the Anthropic Partner Academy.</p></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<script src="assets/js/app.js"></script>
+</body>
+</html>

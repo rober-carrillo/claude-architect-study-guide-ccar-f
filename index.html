@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Architect Study Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-base="" data-page="home">
+<div class="shell wide">
+<main>
+
+<section class="sheet hero">
+  <p class="eyebrow">Claude Certified Architect – Foundations · CCAR-F</p>
+  <h1>Claude Architect Study Guide</h1>
+  <p class="lede">A complete, interactive path through the five exam domains: reading modules with code you can adapt, 120 scenario questions, a timed mock exam, 12 worked incident cases, flashcards and hands-on labs. It's built for 8–10 focused hours.</p>
+  <div class="facts">
+    <div><b>60</b><span>exam items in 120 min</span></div>
+    <div><b>4 of 6</b><span>scenarios per sitting</span></div>
+    <div><b>720</b><span>to pass, scaled 100–1,000</span></div>
+    <div><b id="qcount">120</b><span>practice questions here</span></div>
+  </div>
+  <div class="row">
+    <a class="btn" href="modules/exam.html">Start with the exam overview</a>
+    <a class="btn ghost" href="practice.html">Go to practice</a>
+  </div>
+</section>
+
+<section class="sheet" id="progress">
+  <div class="sec-head"><span class="tag">You</span><h2 class="sec">Your progress</h2>
+  <p>Saved in this browser only. "Mastery" counts questions whose most recent attempt was correct.</p></div>
+  <div class="meters" id="meters"></div>
+  <h4>Mock exams</h4>
+  <div id="mocks" class="small">No mock exams yet.</div>
+  <div class="row" style="margin-top:18px">
+    <button class="btn ghost" type="button" id="reset">Reset all progress</button>
+    <span id="reset-confirm" hidden class="row"><span class="small">This clears every answer, card and checkbox.</span>
+      <button class="btn" type="button" id="reset-yes">Yes, reset</button>
+      <button class="btn ghost" type="button" id="reset-no">Cancel</button></span>
+  </div>
+</section>
+
+<section class="sheet" id="plan">
+  <div class="sec-head"><span class="tag">Plan</span><h2 class="sec">A 10-hour study plan</h2>
+  <p>Work in this order. Tick a session when you finish it. Spread it over 4–6 days if you can, because spaced sessions stick better than one marathon.</p></div>
+  <ol class="plan" id="planlist">
+    <li data-k="p1"><div><b>Exam overview and answering strategy</b><p><a href="modules/exam.html">Exam &amp; scenarios</a>: format, the six scenarios, distractor patterns. Then take a 10-question <a href="practice.html">drill</a> cold to get a baseline.</p></div><span class="dur">45 min</span></li>
+    <li data-k="p2"><div><b>Domain 1: agents, subagents, hooks</b><p><a href="modules/d1-agentic.html">D1 module</a>. The biggest domain (27%), and its ideas appear as distractors everywhere. Do every "check yourself" block.</p></div><span class="dur">2 h</span></li>
+    <li data-k="p3"><div><b>Domain 2: tools and MCP</b><p><a href="modules/d2-tools-mcp.html">D2 module</a>. Pay attention to descriptions, structured errors and the built-in tools table.</p></div><span class="dur">1.5 h</span></li>
+    <li data-k="p4"><div><b>Domain 3: Claude Code configuration</b><p><a href="modules/d3-claude-code.html">D3 module</a>. Learn exactly where each file lives and what each frontmatter key does.</p></div><span class="dur">1.5 h</span></li>
+    <li data-k="p5"><div><b>Domain 4: prompts and structured output</b><p><a href="modules/d4-prompting.html">D4 module</a>, including the batch SLA arithmetic and multi-pass review.</p></div><span class="dur">1.5 h</span></li>
+    <li data-k="p6"><div><b>Domain 5: context and reliability</b><p><a href="modules/d5-context.html">D5 module</a>: escalation fine print, calibration, provenance.</p></div><span class="dur">1 h</span></li>
+    <li data-k="p7"><div><b>Worked cases</b><p><a href="cases.html">All 12 cases</a>. Each one practises multi-step reasoning across domains, like a real scenario block.</p></div><span class="dur">1 h</span></li>
+    <li data-k="p8"><div><b>Mock exam #1, then review</b><p><a href="practice.html#mock">Timed mock</a>, 60 questions in 120 minutes. Review every miss, then reread the matching module sections.</p></div><span class="dur">2.5 h</span></li>
+    <li data-k="p9"><div><b>Targeted drills and flashcards</b><p>Drill your two weakest domains ("missed" filter), and do <a href="flashcards.html">flashcards</a> until boxes 1–2 are empty.</p></div><span class="dur">1 h</span></li>
+    <li data-k="p10"><div><b>Night before</b><p><a href="cheatsheet.html">Cheat sheet</a>. Optionally a second mock for timing. Note that it reuses the same 120-question bank.</p></div><span class="dur">30 min</span></li>
+  </ol>
+  <p class="small">Optional, about 2 h more: the hands-on labs below. They're the best way to make Domain 1–3 facts stick, but they call the real API.</p>
+</section>
+
+<section class="sheet" id="modules">
+  <div class="sec-head"><span class="tag">Read</span><h2 class="sec">Modules</h2></div>
+  <div class="cards">
+    <a class="card" href="modules/exam.html"><span class="k">Start</span><b>Exam &amp; scenarios</b><span class="d">Format, scoring, six scenarios, answer strategy, distractor patterns</span></a>
+    <a class="card" href="modules/d1-agentic.html"><span class="k">Domain 1 · 27%</span><b>Agentic architecture</b><span class="d">Agentic loop, Agent SDK, subagents, coordinator design, hooks, gates, sessions</span></a>
+    <a class="card" href="modules/d2-tools-mcp.html"><span class="k">Domain 2 · 18%</span><b>Tools &amp; MCP</b><span class="d">MCP primitives and wire format, descriptions, errors, tool_choice, built-in tools</span></a>
+    <a class="card" href="modules/d3-claude-code.html"><span class="k">Domain 3 · 20%</span><b>Claude Code</b><span class="d">CLAUDE.md, rules, skills, commands, plan mode, refinement, CI/CD</span></a>
+    <a class="card" href="modules/d4-prompting.html"><span class="k">Domain 4 · 20%</span><b>Prompts &amp; structured output</b><span class="d">Criteria, few-shot, schemas, retry loops, Batch API, multi-pass review</span></a>
+    <a class="card" href="modules/d5-context.html"><span class="k">Domain 5 · 15%</span><b>Context &amp; reliability</b><span class="d">Case facts, escalation, error propagation, calibration, provenance</span></a>
+  </div>
+</section>
+
+<section class="sheet" id="practice-links">
+  <div class="sec-head"><span class="tag">Do</span><h2 class="sec">Practice</h2></div>
+  <div class="cards">
+    <a class="card" href="practice.html"><span class="k">Drill</span><b>Question drills</b><span class="d">Filter by domain, scenario, or questions you missed; instant feedback with a reason for every option</span></a>
+    <a class="card" href="practice.html#mock"><span class="k">Timed</span><b>Mock exam</b><span class="d">4 random scenarios × 15 questions, 120-minute timer, flagging, domain breakdown</span></a>
+    <a class="card" href="cases.html"><span class="k">Cases</span><b>Worked incidents</b><span class="d">12 multi-step cases: read the evidence, decide, see what happens next</span></a>
+    <a class="card" href="flashcards.html"><span class="k">Recall</span><b>Flashcards</b><span class="d">Leitner boxes across all five domains</span></a>
+    <a class="card" href="cheatsheet.html"><span class="k">Review</span><b>Cheat sheet</b><span class="d">Mechanism lookup, harder parts, night-before list</span></a>
+  </div>
+</section>
+
+<section class="sheet" id="labs">
+  <div class="sec-head"><span class="tag">Build</span><h2 class="sec">Hands-on labs</h2>
+  <p>In the <code>labs/</code> folder of this repo, each with a README, starter code and a solution. They follow the official guide's preparation exercises. Setup is in <a href="labs/README.md">labs/README.md</a>.</p></div>
+  <div class="cards">
+    <a class="card" href="labs/01-agent-loop/README.md"><span class="k">Lab 01 · D1 D2 D5</span><b>Agentic loop by hand</b><span class="d">stop_reason loop, structured errors, prerequisite gate, refund cap, case facts</span></a>
+    <a class="card" href="labs/02-mcp-server/README.md"><span class="k">Lab 02 · D2</span><b>Your own MCP server</b><span class="d">FastMCP tools, resources, prompts; a client that prints the raw protocol</span></a>
+    <a class="card" href="labs/03-extraction-pipeline/README.md"><span class="k">Lab 03 · D4 D5</span><b>Extraction pipeline</b><span class="d">Forced tool_choice, nullable schema, validate-and-retry, Batch API</span></a>
+    <a class="card" href="labs/04-claude-code-config/README.md"><span class="k">Lab 04 · D3</span><b>Claude Code team config</b><span class="d">CLAUDE.md, rules, skills, commands, hooks, .mcp.json</span></a>
+    <a class="card" href="labs/05-multi-agent-sdk/README.md"><span class="k">Lab 05 · D1</span><b>Multi-agent with the SDK</b><span class="d">Coordinator, AgentDefinition subagents, hooks, sessions</span></a>
+    <a class="card" href="labs/06-ci-review/README.md"><span class="k">Lab 06 · D3 D4</span><b>CI review bot</b><span class="d">claude -p with a JSON schema, GitHub Action, multi-pass review</span></a>
+  </div>
+</section>
+
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic.</footer>
+<script src="assets/js/data/questions-s1-s3.js"></script>
+<script src="assets/js/data/questions-s2-s4.js"></script>
+<script src="assets/js/data/questions-s5-s6.js"></script>
+<script src="assets/js/data/flashcards.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+(function () {
+  const { store, progress, DOM, WEIGHT } = window.CCA;
+  const bank = window.QBANK || [];
+  document.getElementById("qcount").textContent = bank.length;
+
+  function render() {
+    const p = progress();
+    const meters = document.getElementById("meters");
+    const total = bank.length;
+    const seen = Object.values(p.byDom).reduce((s, d) => s + d.seen, 0);
+    const right = Object.values(p.byDom).reduce((s, d) => s + d.right, 0);
+    const cards = window.FLASHCARDS || [];
+    const mastered = cards.filter((c) => (store.get("fc:" + c.id, { box: 0 }).box || 0) >= 4).length;
+    const tiles = [
+      { lbl: "Questions attempted", val: `${seen} / ${total}`, pct: total ? seen / total : 0 },
+      { lbl: "Mastered (last attempt right)", val: `${right} / ${total}`, pct: total ? right / total : 0, ok: true },
+      { lbl: "Sections studied", val: `${p.readKeys.length}`, pct: Math.min(1, p.readKeys.length / 60) },
+      { lbl: "Flashcards in box 4–5", val: `${mastered} / ${cards.length}`, pct: cards.length ? mastered / cards.length : 0 },
+    ];
+    for (let d = 1; d <= 5; d++) {
+      const x = p.byDom[d];
+      const acc = x.seen ? x.right / x.seen : 0;
+      tiles.push({ lbl: `D${d} · ${DOM[d]} · ${WEIGHT[d]}%`, val: x.seen ? `${Math.round(acc * 100)}% right` : "not started",
+                   sub: `${x.seen}/${x.total} attempted`, pct: acc, ok: acc >= 0.8, warn: x.seen && acc < 0.7 });
+    }
+    meters.innerHTML = tiles.map((t) => `<div class="meter"><div class="lbl">${t.lbl}</div><div class="val">${t.val}</div>
+      <div class="bar ${t.ok ? "ok" : t.warn ? "warn" : ""}"><i style="width:${Math.round(t.pct * 100)}%"></i></div>
+      ${t.sub ? `<div class="small" style="margin-top:6px">${t.sub}</div>` : ""}</div>`).join("");
+
+    const mocks = store.get("mocks", []);
+    const mbox = document.getElementById("mocks");
+    if (mocks.length) {
+      mbox.innerHTML = `<div class="tbl"><table><thead><tr><th>Date</th><th>Score</th><th>Scenarios</th><th>Weakest domain</th><th>Time used</th></tr></thead><tbody>` +
+        mocks.slice().reverse().map((m) => {
+          const weakest = Object.entries(m.byDom).filter(([, v]) => v.n).sort((a, b) => a[1].c / a[1].n - b[1].c / b[1].n)[0];
+          return `<tr><td>${new Date(m.t).toLocaleDateString()}</td><td class="num">${m.c}/${m.n} (${Math.round(100 * m.c / m.n)}%)</td>
+            <td>${m.scen.join(", ")}</td><td>${weakest ? "D" + weakest[0] + " " + Math.round(100 * weakest[1].c / weakest[1].n) + "%" : "–"}</td>
+            <td class="num">${Math.round(m.secs / 60)} min</td></tr>`;
+        }).join("") + "</tbody></table></div>";
+    }
+  }
+
+  document.querySelectorAll("#planlist li").forEach((li) => {
+    const key = "plan:" + li.dataset.k;
+    const box = document.createElement("button");
+    box.type = "button";
+    box.className = "btn ghost";
+    box.style.gridColumn = "2";
+    box.style.justifySelf = "start";
+    const paint = () => {
+      const done = store.get(key, false);
+      box.classList.toggle("is-done", done);
+      box.className = "btn ghost done-btn" + (done ? " is-done" : "");
+      box.style.marginTop = "6px";
+      box.textContent = done ? "✓ Done" : "Mark done";
+    };
+    box.addEventListener("click", () => { store.set(key, !store.get(key, false)); paint(); });
+    li.appendChild(box);
+    paint();
+  });
+
+  const reset = document.getElementById("reset"), conf = document.getElementById("reset-confirm");
+  reset.addEventListener("click", () => { conf.hidden = false; reset.hidden = true; });
+  document.getElementById("reset-no").addEventListener("click", () => { conf.hidden = true; reset.hidden = false; });
+  document.getElementById("reset-yes").addEventListener("click", () => {
+    const theme = store.get("theme", "system");
+    store.clearAll(); store.set("theme", theme);
+    conf.hidden = true; reset.hidden = false; render();
+    document.querySelectorAll("#planlist li .done-btn").forEach((b) => { b.classList.remove("is-done"); b.textContent = "Mark done"; });
+  });
+  render();
+})();
+</script>
+</body>
+</html>

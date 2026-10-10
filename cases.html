@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worked Cases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-base="" data-page="cases">
+<div class="shell">
+<nav class="toc" aria-label="Cases" id="case-toc"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Worked cases · about 5 minutes each</p>
+  <h1>Incident casebook</h1>
+  <p class="lede">Twelve production incidents, two per scenario. Read the evidence, make a decision, and see what happens next. Each case has three linked decisions, the way an exam scenario block keeps building on the same system.</p>
+  <div class="row">
+    <label class="field">Show<select id="c-filter"><option value="">All scenarios</option></select></label>
+    <button class="btn ghost" type="button" id="c-reset" style="align-self:end">Clear my case answers</button>
+  </div>
+  <p class="score" id="c-score" style="margin-top:14px"></p>
+</section>
+<div id="cases" style="display:flex;flex-direction:column;gap:28px"></div>
+</main>
+</div>
+<footer class="footer">Cases written for this guide in the exam's style. They are not real exam items.</footer>
+<script src="assets/js/data/cases.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+(function () {
+  const { store, shuffle, SCEN, LETTERS } = window.CCA;
+  const cases = window.CASES || [];
+  const host = document.getElementById("cases");
+  const filter = document.getElementById("c-filter");
+  for (let s = 1; s <= 6; s++) filter.insertAdjacentHTML("beforeend", `<option value="${s}">S${s} · ${SCEN[s]}</option>`);
+
+  function score() {
+    let done = 0, right = 0, total = 0;
+    cases.forEach((c) => { total += c.steps.length; const st = store.get("case:" + c.id, {}); Object.values(st).forEach((v) => { done++; if (v.ok) right++; }); });
+    document.getElementById("c-score").textContent = `${done} of ${total} decisions made · ${right} correct`;
+  }
+
+  function renderCase(c) {
+    const sec = document.createElement("section");
+    sec.className = "sheet";
+    sec.id = c.id;
+    sec.innerHTML = `<div class="sec-head"><span class="tag">S${c.scenario} · ${SCEN[c.scenario]}</span><h2 class="sec">${c.title}</h2>
+      <p>Tasks ${c.tasks.join(", ")}</p></div><div class="brief">${c.brief}</div>
+      ${c.evidence ? `<h4>Evidence</h4><pre class="evidence"></pre>` : ""}<div class="steps"></div>`;
+    if (c.evidence) sec.querySelector("pre.evidence").textContent = c.evidence;
+    const stepsEl = sec.querySelector(".steps");
+    const saved = store.get("case:" + c.id, {});
+
+    function renderStep(i) {
+      const s = c.steps[i];
+      const el = document.createElement("div");
+      el.className = "step";
+      el.innerHTML = `<h4>Decision ${i + 1} of ${c.steps.length}</h4><p class="stem"><strong>${s.q}</strong></p><div class="opts"></div><div class="then" hidden></div>`;
+      const opts = el.querySelector(".opts"), then = el.querySelector(".then");
+      const order = s.options.map((_, k) => k);
+      const btns = order.map((k, pos) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = `<span>${LETTERS[pos]}</span><div>${s.options[k]}</div>`;
+        b.addEventListener("click", () => answer(k));
+        opts.appendChild(b);
+        return b;
+      });
+      function answer(k, restoring) {
+        btns.forEach((b, pos) => {
+          const kk = order[pos];
+          b.disabled = true;
+          if (kk === s.answer) b.classList.add("right");
+          else if (kk === k) b.classList.add("wrong");
+          const r = document.createElement("div");
+          r.className = "rat";
+          r.innerHTML = (kk === s.answer ? "✓ " : "✗ ") + s.feedback[kk];
+          b.appendChild(r);
+        });
+        if (s.then) { then.innerHTML = s.then; then.hidden = false; }
+        if (!restoring) {
+          const st = store.get("case:" + c.id, {});
+          st[i] = { pick: k, ok: k === s.answer };
+          store.set("case:" + c.id, st);
+          score();
+        }
+        if (i + 1 < c.steps.length) renderStep(i + 1);
+        else {
+          const l = document.createElement("div");
+          l.className = "lesson";
+          l.innerHTML = `<b>What this case teaches</b>${c.lesson}`;
+          stepsEl.appendChild(l);
+        }
+      }
+      stepsEl.appendChild(el);
+      if (saved[i]) answer(saved[i].pick, true);
+    }
+    renderStep(0);
+    return sec;
+  }
+
+  function renderAll() {
+    host.innerHTML = "";
+    const f = +filter.value || null;
+    const shown = cases.filter((c) => !f || c.scenario === f);
+    shown.forEach((c) => host.appendChild(renderCase(c)));
+    document.getElementById("case-toc").innerHTML = `<h2>Cases</h2><ol>` + shown.map((c) =>
+      `<li><a href="#${c.id}"><span>S${c.scenario}</span><span>${c.title}</span><span></span></a></li>`).join("") + `</ol>`;
+    score();
+  }
+  filter.addEventListener("change", renderAll);
+  document.getElementById("c-reset").addEventListener("click", () => {
+    cases.forEach((c) => store.set("case:" + c.id, {}));
+    renderAll();
+  });
+  renderAll();
+})();
+</script>
+</body>
+</html>

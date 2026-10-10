@@ -1,0 +1,13 @@
+BRIGHTLINE OFFICE SUPPLY
+Invoice #: BL-55102          Date: 2026-09-22          Terms: Net 15
+Customer PO: PO-77901
+
+Item                          Qty   Each      Line total
+Ergonomic chair                 4   $245.00      $980.00
+Monitor arm                     4    $50.00      $200.00
+
+Subtotal                                       $1,180.00
+Tax (0%)                                           $0.00
+Amount due                                     $1,250.00
+
+Currency: USD

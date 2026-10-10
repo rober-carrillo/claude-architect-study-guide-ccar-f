@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain 2 · Tools & MCP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="d2" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Domain 2" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Domain 2 · Tool Design &amp; MCP Integration</p>
+  <h1>Tools, MCP servers and built-ins</h1>
+  <p class="lede">How MCP fits together, what crosses the wire, how to write tool descriptions and errors an agent can act on, how to distribute tools, and when to use each built-in tool.</p>
+  <div class="facts"><div><b>18%</b><span>of scored items</span></div><div><b>5</b><span>task statements</span></div><div><b>1.5–2 h</b><span>suggested study time</span></div></div><div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="architecture" data-tag="2.4" data-label="MCP architecture">
+  <div class="sec-head"><span class="tag">Task 2.4</span><h2 class="sec">MCP architecture</h2><p>Host, client, server; tools, resources, prompts.</p></div>
+<div class="tbl"><table>
+    <thead><tr><th>Role</th><th>Is</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Host</strong></td><td>The AI application the user works in</td><td>Claude Code, Claude Desktop, your SDK app</td></tr>
+      <tr><td><strong>Client</strong></td><td>A connector inside the host, one per server, 1:1</td><td>Created when the host reads <code>.mcp.json</code></td></tr>
+      <tr><td><strong>Server</strong></td><td>A program that exposes capabilities</td><td>Your <code>tickets_server.py</code>, a GitHub server, a Postgres server</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The three primitives, and who controls each</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Primitive</th><th>Controlled by</th><th>Is</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Tools</strong></td><td>The model</td><td>Functions Claude chooses to call, with a JSON Schema input</td><td>Actions and queries: <code>search_tickets</code>, <code>create_refund</code></td></tr>
+      <tr><td><strong>Resources</strong></td><td>The application / user</td><td>Read-only data addressed by URI, attached as context</td><td>Catalogs, schemas, documents: <code>tickets://TCK-88</code>, <code>db://schema</code></td></tr>
+      <tr><td><strong>Prompts</strong></td><td>The user</td><td>Reusable prompt templates with arguments</td><td>Show up as slash commands: <code>/mcp__tickets__triage</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="call exam"><b>Exam signal</b>
+  <p>"The agent makes dozens of exploratory calls just to learn what exists" → expose a <strong>resource</strong> (a content catalog, DB schema or doc index) that the agent reads once instead of probing with tools. Tools act or query. Resources give context.</p></div>
+</section>
+<section class="sheet" id="lifecycle" data-tag="2.4" data-label="Transports and lifecycle">
+  <div class="sec-head"><span class="tag">Task 2.4</span><h2 class="sec">Transports and lifecycle</h2><p>stdio vs HTTP, and the handshake.</p></div>
+<ul>
+    <li><strong>stdio</strong>: the host launches the server as a subprocess and talks over stdin/stdout. Used for local tools. <strong>Never print logs to stdout</strong>, because that corrupts the JSON-RPC stream. Log to stderr.</li>
+    <li><strong>Streamable HTTP</strong>: a remote server at a URL, with auth headers or OAuth. Used for shared or hosted services. (The older HTTP+SSE transport is deprecated.)</li>
+  </ul>
+
+  <h3>The lifecycle, from config file to tool result</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  participant Cfg as .mcp.json
+  participant H as Host (Claude Code)
+  participant M as Claude (model)
+  participant S as MCP server
+  Cfg->>H: server command / url
+  H->>S: spawn (stdio) or connect (HTTP)
+  H->>S: initialize (protocol version, capabilities)
+  S-->>H: server capabilities: tools, resources, prompts
+  H->>S: notifications/initialized
+  H->>S: tools/list
+  S-->>H: [{name, description, inputSchema}]
+  H->>M: tools offered as mcp__tickets__search_tickets ...
+  M->>H: tool_use search_tickets {query}
+  Note over H: permission rules, then PreToolUse hook
+  H->>S: tools/call {name, arguments}
+  S-->>H: {content:[...], isError}
+  Note over H: PostToolUse hook
+  H->>M: tool_result
+  </pre>
+
+  <h4>What actually goes over the wire (JSON-RPC 2.0)</h4>
+  <div class="codewrap"><div class="fname"><b>tools/list → response</b><span>server tells host what it offers</span></div><pre class="code"><code class="language-json">{ "jsonrpc": "2.0", "id": 2, "result": { "tools": [
+  { "name": "search_tickets",
+    "description": "Search support tickets by keyword. Use when you don't have a ticket ID. Returns up to `limit` summaries (id, title, status). Call get_ticket for full detail.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query":  { "type": "string", "description": "Keywords, e.g. 'refund double charge'" },
+        "status": { "type": "string", "enum": ["open", "closed", "any"], "default": "open" },
+        "limit":  { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+      },
+      "required": ["query"]
+    },
+    "annotations": { "readOnlyHint": true }
+  }
+]}}</code></pre></div>
+  <div class="codewrap"><div class="fname"><b>tools/call → request and result</b><span>one invocation</span></div><pre class="code"><code class="language-json">// request (host → server)
+{ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+  "params": { "name": "get_ticket", "arguments": { "ticket_id": "TCK-9999" } } }
+
+// result (server → host): a tool-level error, reported as data
+{ "jsonrpc": "2.0", "id": 7, "result": {
+  "isError": true,
+  "content": [{ "type": "text",
+    "text": "{\"errorCategory\":\"not_found\",\"isRetryable\":false,\"message\":\"No ticket TCK-9999. Use search_tickets to find valid IDs.\"}" }]
+}}</code></pre></div>
+  <p>There are two kinds of failure. A <strong>protocol error</strong> (unknown method, malformed request) comes back as a JSON-RPC <code>error</code> and the model never sees it. A <strong>tool execution error</strong> (not found, permission denied, upstream timeout) comes back as a normal <code>result</code> with <code>isError: true</code>, so Claude can read it and change course.</p>
+</section>
+<section class="sheet" id="wire" data-tag="2.4" data-label="One call, end to end">
+  <div class="sec-head"><span class="tag">Task 2.4</span><h2 class="sec">One tool call, end to end</h2>
+  <p>A remote ticketing server traced from config to result, so you can see which layer adds what.</p></div>
+  <div class="call note"><b>Scope</b><p>Auth protocols, OAuth and HTTP streaming are officially <strong>out of scope</strong>. This walkthrough is here so the layers make sense. The exam-relevant parts are <code>.mcp.json</code> with <code>${ENV}</code> expansion, <code>isError</code>, and that Claude only ever sees the tool name, arguments and result.</p></div>
+
+  <h3>1. Config: where the credential is referenced</h3>
+  <div class="codewrap"><div class="fname"><b>.mcp.json</b><span>committed, so no secrets inside</span></div><pre class="code"><code class="language-json">{
+  "mcpServers": {
+    "tickets": {
+      "type": "http",
+      "url": "https://mcp.acme-support.com/mcp",
+      "headers": { "Authorization": "Bearer ${ACME_TICKETS_TOKEN}" }
+    }
+  }
+}</code></pre></div>
+
+  <h3>2. What Claude produces: no credential, just intent</h3>
+  <div class="codewrap"><div class="fname"><b>tool_use block</b><span>in the Messages API response</span></div><pre class="code"><code class="language-json">{ "type": "tool_use", "id": "toolu_01HtV9mXq3",
+  "name": "mcp__tickets__search_tickets",
+  "input": { "query": "double charge", "status": "open", "limit": 5 } }</code></pre></div>
+
+  <h3>3. What the host sends: JSON-RPC, credential in the transport</h3>
+  <div class="codewrap"><div class="fname"><b>HTTP request</b><span>host → MCP server</span></div><pre class="code"><code class="language-http">POST /mcp HTTP/1.1
+Host: mcp.acme-support.com
+Authorization: Bearer atk_live_7f3c9e...
+Content-Type: application/json
+Accept: application/json, text/event-stream
+Mcp-Session-Id: 4b1e8f2a-91c3-4d7e-a0b5-3f6c2d9e8a71
+
+{"jsonrpc":"2.0","id":7,"method":"tools/call",
+ "params":{"name":"search_tickets","arguments":{"query":"double charge","status":"open","limit":5}}}</code></pre></div>
+  <p>The host removes the <code>mcp__tickets__</code> prefix, wraps the call in JSON-RPC, and adds the header it expanded from the environment. For a <strong>stdio</strong> server there are no headers: the credential is an environment variable given to the process at launch, and the same JSON-RPC objects travel over stdin and stdout, one per line.</p>
+
+  <h3>4. The server checks the caller, then uses its own backend credential</h3>
+  <p>Two separate secrets: the <em>caller's</em> token (who is calling this MCP server) and the <em>server's</em> backend token (how the server reaches Zendesk or the database). The second never leaves the server.</p>
+
+  <h3>5. The result, and what Claude gets back</h3>
+  <div class="codewrap"><div class="fname"><b>JSON-RPC result</b><span>server → host</span></div><pre class="code"><code class="language-json">{"jsonrpc":"2.0","id":7,"result":{
+  "content":[{"type":"text","text":"{\"tickets\":[{\"id\":88412,\"title\":\"Charged twice for March invoice\",\"status\":\"open\"}]}"}],
+  "structuredContent":{"tickets":[{"id":88412,"title":"Charged twice for March invoice","status":"open"}]},
+  "isError":false}}</code></pre></div>
+  <div class="codewrap"><div class="fname"><b>tool_result block</b><span>host → Claude, next user message</span></div><pre class="code"><code class="language-json">{ "type": "tool_result", "tool_use_id": "toolu_01HtV9mXq3",
+  "content": [{ "type": "text", "text": "{\"tickets\":[{\"id\":88412, ...}]}" }] }</code></pre></div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>What failed</th><th>What comes back</th><th>Does Claude see it?</th></tr></thead>
+    <tbody>
+      <tr><td>Bad credential</td><td>HTTP 401</td><td>No. The host shows the server as failed.</td></tr>
+      <tr><td>Unknown method, malformed params</td><td>JSON-RPC <code>error</code> object</td><td>No. It's a protocol error.</td></tr>
+      <tr><td>Not found, upstream timeout, policy refusal</td><td><code>result</code> with <code>isError: true</code></td><td><strong>Yes</strong>, so the agent can recover.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="sheet" id="servers" data-tag="2.2" data-label="Minimum servers">
+  <div class="sec-head"><span class="tag">Task 2.2</span><h2 class="sec">Minimum servers</h2><p>Python and TypeScript skeletons.</p></div>
+<div class="codewrap"><div class="fname"><b>tools/tickets_server.py</b><span>pip install mcp</span></div><pre class="code"><code class="language-python">import json, sys
+from typing import Literal
+try:
+    from mcp.server.mcpserver import MCPServer as FastMCP   # mcp 2.x
+except ImportError:
+    from mcp.server.fastmcp import FastMCP                  # mcp 1.x
+
+mcp = FastMCP("tickets")              # server name → tools become mcp__tickets__*
+
+# TOOL: the function signature becomes inputSchema; the docstring becomes description
+@mcp.tool()
+def search_tickets(query: str,
+                   status: Literal["open", "closed", "any"] = "open",
+                   limit: int = 10) -&gt; list[dict]:
+    """Search support tickets by keyword. Use when you don't have a ticket ID.
+    Returns id, title, status for each match. Call get_ticket for the full thread."""
+    return db.search(query, status, min(limit, 50))
+
+@mcp.tool()
+def get_ticket(ticket_id: str) -&gt; dict:
+    """Get one ticket's full thread and metadata by ID (format TCK-1234)."""
+    t = db.get(ticket_id)
+    if t is None:
+        # Raising inside a tool → returned to Claude as isError: true
+        raise ValueError(f"No ticket {ticket_id}. Use search_tickets to find valid IDs.")
+    return t
+
+# RESOURCE: read-only context addressed by URI (static or templated)
+@mcp.resource("tickets://categories")
+def categories() -&gt; str:
+    """All ticket categories and their routing teams."""
+    return json.dumps(db.categories())
+
+@mcp.resource("tickets://{ticket_id}")
+def ticket_resource(ticket_id: str) -&gt; str:
+    return db.render_markdown(ticket_id)
+
+# PROMPT: a user-invoked template
+@mcp.prompt()
+def triage(ticket_id: str) -&gt; str:
+    return f"Triage ticket {ticket_id}: classify, set priority, draft a first reply."
+
+if __name__ == "__main__":
+    print("tickets server starting", file=sys.stderr)   # stderr, never stdout
+    mcp.run()                                           # stdio by default</code></pre></div>
+
+  <div class="call note"><b>Version note</b><p>In the <code>mcp</code> Python package 2.x, <code>mcp.server.fastmcp</code> was replaced by <code>mcp.server.mcpserver.MCPServer</code>. The decorators work the same way. The snippet above imports whichever exists; it was run against mcp 1.30 and 2.3 in Lab 02. The exam tests the concepts (tools, resources, <code>isError</code>), not import paths.</p></div>
+
+  <h3>Minimum server: TypeScript</h3>
+  <div class="codewrap"><div class="fname"><b>src/server.ts</b><span>npm i @modelcontextprotocol/sdk zod</span></div><pre class="code"><code class="language-typescript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+const server = new McpServer({ name: "tickets", version: "1.0.0" });
+
+server.registerTool(
+  "get_ticket",
+  {
+    title: "Get ticket",
+    description: "Get one ticket's full thread and metadata by ID (format TCK-1234).",
+    inputSchema: { ticket_id: z.string().regex(/^TCK-\d+$/).describe("Ticket ID") },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ ticket_id }) =&gt; {
+    const t = await db.get(ticket_id);
+    if (!t) {
+      return { isError: true,
+               content: [{ type: "text", text: `No ticket ${ticket_id}. Use search_tickets.` }] };
+    }
+    return { content: [{ type: "text", text: JSON.stringify(t) }] };
+  }
+);
+
+await server.connect(new StdioServerTransport());</code></pre></div>
+</section>
+<section class="sheet" id="inside" data-tag="2.2" data-label="What runs inside a tool">
+  <div class="sec-head"><span class="tag">Task 2.2</span><h2 class="sec">What runs inside a tool</h2>
+  <p>The model never sees or runs your tool's code. It sees the name, description and schema, and gets back the result.</p></div>
+  <p>The body of an MCP tool is ordinary deterministic code: a SQL query, an HTTP call, a file read. That makes the tool a <strong>control boundary</strong>. Claude can do exactly what the function allows and nothing else.</p>
+  <div class="codewrap"><div class="fname"><b>tickets_server.py</b><span>a realistic body</span></div><pre class="code"><code class="language-python">@mcp.tool()
+def search_tickets(query: str,
+                   status: Literal["open", "closed", "any"] = "open",
+                   limit: int = 10) -&gt; dict:
+    """Search support tickets by keyword. Use when you don't have a ticket ID.
+    Returns id, title, status per match. Call get_ticket for the full thread."""
+    sql = """SELECT id, title, status FROM tickets
+             WHERE to_tsvector(title || ' ' || body) @@ plainto_tsquery(%s)
+               AND (%s = 'any' OR status = %s)
+             ORDER BY updated_at DESC LIMIT %s"""
+    try:
+        rows = db.execute(sql, (query, status, status, min(limit, 50)))
+    except TimeoutError:
+        raise ToolError(json.dumps({"errorCategory": "transient", "isRetryable": True,
+                                    "message": "Ticket DB timed out. Retry in a few seconds."}))
+    return {"tickets": [dict(id=r[0], title=r[1], status=r[2]) for r in rows],
+            "count": len(rows)}          # count: 0 is a VALID empty result, not an error</code></pre></div>
+  <ul>
+    <li>Three columns, a 50-row cap, and no arbitrary SQL: narrow, purpose-built access.</li>
+    <li>A timeout is reported as an error with category and retryability. An empty match returns success with <code>count: 0</code>.</li>
+    <li>If the tickets were local Markdown files, you wouldn't need a server at all: the built-in Grep tool would do. MCP is for systems Claude can't reach directly.</li>
+  </ul>
+</section>
+<section class="sheet" id="design" data-tag="2.1" data-label="Tool design rules the exam tests">
+  <div class="sec-head"><span class="tag">Task 2.1</span><h2 class="sec">Tool design rules the exam tests</h2></div>
+<div class="tbl"><table>
+    <thead><tr><th>Rule</th><th>Why</th><th>Looks like</th></tr></thead>
+    <tbody>
+      <tr><td>The description is the main selection signal</td><td>Claude chooses tools by reading descriptions. Vague or overlapping ones cause the wrong tool to be picked.</td><td>Say what it does, when to use it, when <em>not</em> to, input formats and what it returns</td></tr>
+      <tr><td>Disambiguate near-duplicates</td><td><code>get_customer</code> vs <code>lookup_account</code> with similar descriptions leads to misrouting</td><td>Rename, merge, or state the boundary: "Use for billing accounts, not CRM contacts"</td></tr>
+      <tr><td>Keep the tool set small per agent</td><td>Choice accuracy drops as the number of tools grows, roughly past 15–20</td><td>Give each subagent 4–5 tools for its role, not all 40</td></tr>
+      <tr><td>Consolidate chains that always run together</td><td>Fewer round trips and fewer failure points</td><td><code>schedule_meeting</code> instead of <code>list_users</code> + <code>find_slots</code> + <code>create_event</code></td></tr>
+      <tr><td>Constrain inputs</td><td>Stops malformed calls before they happen</td><td><code>enum</code>, <code>pattern</code>, min/max, required fields</td></tr>
+      <tr><td>Return lean, relevant output</td><td>Every byte of a result costs context</td><td>Return the 5 fields that matter, not the whole 40-field record; paginate</td></tr>
+      <tr><td>Structured, actionable errors</td><td>Lets the agent decide whether to retry, rephrase or escalate</td><td><code>errorCategory</code> (transient, validation, permission, business), <code>isRetryable</code>, a human message, and the next step</td></tr>
+      <tr><td>Annotate behaviour</td><td>Hosts can auto-approve safe calls and confirm risky ones</td><td><code>readOnlyHint</code>, <code>destructiveHint</code>, <code>idempotentHint</code>, <code>openWorldHint</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="call trap"><b>Trap</b>
+  <ul>
+    <li>Returning an empty result <em>and</em> success when the lookup actually failed (timeout, auth). The agent then reports "no records found" as fact. Distinguish "valid empty result" from "couldn't check".</li>
+    <li>Generic errors like <code>"Operation failed"</code>. The agent can't tell a retryable timeout from a business-rule refusal, so it retries forever or gives up too early.</li>
+    <li>Fixing wrong tool selection by adding a routing classifier or few-shot examples before fixing the descriptions. Fix the descriptions first. It is the cheapest change and goes to the root cause.</li>
+  </ul></div>
+</section>
+<section class="sheet" id="descriptions" data-tag="2.1" data-label="Descriptions & boundaries">
+  <div class="sec-head"><span class="tag">Task 2.1</span><h2 class="sec">Tool descriptions and boundaries</h2>
+  <p>Descriptions are the main input Claude uses to choose a tool. This is the most-tested idea in the domain.</p></div>
+
+  <h3>Before and after</h3>
+  <div class="two">
+    <div class="bad"><h4>Minimal (misroutes)</h4>
+<pre class="evidence">get_customer:  "Retrieves customer information."
+lookup_order:  "Retrieves order details."</pre>
+      <p>"Check my order #12345" goes to <code>get_customer</code> about a third of the time.</p></div>
+    <div class="good"><h4>Differentiated</h4>
+<pre class="evidence">lookup_order: "Get one order by order number
+(format ORD-12345 or #12345). Returns status,
+items, totals, shipping, refund_eligible.
+Use for ANY question about a specific order.
+Do NOT use to find who a customer is; use
+get_customer (email/phone/customer ID)."</pre></div>
+  </div>
+  <p>A good description includes <strong>input formats</strong>, <strong>example queries</strong>, <strong>edge cases</strong>, what it <strong>returns</strong>, and when to use it <strong>instead of</strong> similar tools.</p>
+
+  <h3>The system prompt can override good descriptions</h3>
+  <p>If the system prompt says "Always <em>analyze the content</em> the user provides", a tool called <code>analyze_content</code> picks up a keyword association and gets chosen for everything. When tool selection is wrong, check the system prompt for keyword-sensitive instructions, not just the descriptions.</p>
+
+  <h3>Rename, split or merge</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Symptom</th><th>Fix</th><th>Example from the guide</th></tr></thead>
+    <tbody>
+      <tr><td>Two tools with near-identical purpose and descriptions</td><td><strong>Rename</strong> and rewrite to remove the overlap</td><td><code>analyze_content</code> → <code>extract_web_results</code>, with a web-specific description</td></tr>
+      <tr><td>One generic tool doing several jobs inconsistently</td><td><strong>Split</strong> into purpose-specific tools with clear input/output contracts</td><td><code>analyze_document</code> → <code>extract_data_points</code>, <code>summarize_content</code>, <code>verify_claim_against_source</code></td></tr>
+      <tr><td>Steps that always run together</td><td><strong>Merge</strong>. This is valid, but more work than fixing descriptions, so it's rarely the "first step"</td><td><code>list_slots</code> + <code>create_event</code> → <code>schedule_meeting</code></td></tr>
+      <tr><td>A tool that is too open-ended</td><td><strong>Constrain</strong> it</td><td><code>fetch_url</code> → <code>load_document</code>, which validates the URL is an allowed document source</td></tr>
+    </tbody>
+  </table></div>
+  <div class="call exam"><b>Exam signal</b><p>"Most effective <em>first</em> step to improve tool selection" → expand the descriptions. Few-shot routing examples add tokens without fixing the cause, a keyword router bypasses the model's understanding, and merging is a bigger architectural change.</p></div>
+  <div class="quiz-embed" data-tasks="2.1" data-count="4"></div>
+</section>
+<section class="sheet" id="errors" data-tag="2.2" data-label="Structured errors">
+  <div class="sec-head"><span class="tag">Task 2.2</span><h2 class="sec">Structured error responses</h2>
+  <p>The error you return decides whether the agent retries, rephrases, explains or escalates.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>errorCategory</th><th>Example</th><th>isRetryable</th><th>Agent should</th></tr></thead>
+    <tbody>
+      <tr><td><code>transient</code></td><td>Timeout, 503, rate-limited</td><td><code>true</code></td><td>Retry (ideally inside the tool or subagent first)</td></tr>
+      <tr><td><code>validation</code></td><td>Order ID in the wrong format</td><td><code>true</code> after fixing input</td><td>Correct the arguments and call again</td></tr>
+      <tr><td><code>business</code></td><td>Return window closed 12 days ago</td><td><code>false</code></td><td>Explain to the customer with the provided wording; offer alternatives or escalate</td></tr>
+      <tr><td><code>permission</code></td><td>Agent lacks scope to edit billing</td><td><code>false</code></td><td>Escalate; retrying is pointless</td></tr>
+    </tbody>
+  </table></div>
+  <div class="codewrap"><div class="fname"><b>business-rule error</b><span>isError: true, content is structured</span></div><pre class="code"><code class="language-json">{ "isError": true, "content": [{ "type": "text", "text":
+  "{\"errorCategory\":\"business\",\"isRetryable\":false,
+    \"code\":\"RETURN_WINDOW_CLOSED\",
+    \"message\":\"Order ORD-44170 was delivered 42 days ago; returns close after 30.\",
+    \"customerMessage\":\"This order is outside our 30-day return window, but I can check warranty options.\"}" }] }</code></pre></div>
+
+  <h3>Empty result vs. failed lookup</h3>
+  <div class="two">
+    <div class="good"><h4>Valid empty result</h4><p><code>isError: false</code>, <code>{"matches": [], "count": 0}</code>. The query ran and nothing matched. That is an answer.</p></div>
+    <div class="bad"><h4>Access failure</h4><p><code>isError: true</code>, <code>transient</code>. The query didn't run. Saying "no records found" would be a false statement.</p></div>
+  </div>
+  <h3>Recover locally, propagate what you can't fix</h3>
+  <p>A subagent should retry transient failures itself. Only when it can't recover does it report to the coordinator, with the failure type, what it tried, partial results and possible alternatives.</p>
+  <div class="quiz-embed" data-tasks="2.2" data-count="4"></div>
+</section>
+<section class="sheet" id="distribution" data-tag="2.3" data-label="Tool distribution & tool_choice">
+  <div class="sec-head"><span class="tag">Task 2.3</span><h2 class="sec">Distributing tools and setting tool_choice</h2>
+  <p>Which agent gets which tools, and how to force a call.</p></div>
+  <ul>
+    <li><strong>Fewer tools, better choices.</strong> An agent with 18 tools chooses worse than one with 4–5.</li>
+    <li><strong>Tools outside a role get misused.</strong> A synthesis agent given web search starts searching instead of synthesizing.</li>
+    <li><strong>Scoped cross-role tools</strong> for frequent needs: give the synthesis agent a narrow <code>verify_fact</code> for the 85% of checks that are simple, and keep complex verification going through the coordinator to the search agent.</li>
+  </ul>
+  <div class="tbl"><table>
+    <thead><tr><th><code>tool_choice</code></th><th>Behaviour</th><th>Use it to</th></tr></thead>
+    <tbody>
+      <tr><td><code>{"type": "auto"}</code></td><td>May call a tool or reply in text</td><td>Normal agent turns</td></tr>
+      <tr><td><code>{"type": "any"}</code></td><td>Must call a tool, any of them</td><td>Guarantee structured output when several extraction schemas exist and the document type is unknown</td></tr>
+      <tr><td><code>{"type": "tool", "name": "extract_metadata"}</code></td><td>Must call <em>that</em> tool</td><td>Make one step run first (metadata before enrichment), then continue in follow-up turns with <code>auto</code></td></tr>
+      <tr><td><code>{"type": "none"}</code></td><td>Can't call tools</td><td>Force a text answer, e.g. a final summary</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="2.3" data-count="4"></div>
+</section>
+<section class="sheet" id="mcpconfig" data-tag="2.4" data-label="MCP servers in Claude Code">
+  <div class="sec-head"><span class="tag">Task 2.4</span><h2 class="sec">MCP servers in Claude Code</h2></div>
+<div class="codewrap"><div class="fname"><b>.mcp.json</b><span>project scope, checked in</span></div><pre class="code"><code class="language-json">{
+  "mcpServers": {
+    "tickets": {
+      "command": "python",
+      "args": ["tools/tickets_server.py"],
+      "env": { "TICKETS_DB_URL": "${TICKETS_DB_URL}" }
+    },
+    "docs": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }
+    }
+  }
+}</code></pre></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Scope</th><th>Stored in</th><th>Who gets it</th></tr></thead>
+    <tbody>
+      <tr><td><code>local</code> (default)</td><td><code>~/.claude.json</code>, keyed to this project</td><td>Only you, only this repo</td></tr>
+      <tr><td><code>project</code></td><td><code>.mcp.json</code> at the repo root</td><td>Everyone who clones; each person approves it once</td></tr>
+      <tr><td><code>user</code></td><td><code>~/.claude.json</code></td><td>Only you, every project. The official exam guide's answer for "personal or experimental server".</td></tr>
+    </tbody>
+  </table></div>
+  <p>Tools from every configured server are discovered when the session connects, and all of them are available to the agent at the same time.</p>
+  <p>Add one from the CLI: <code>claude mcp add tickets --scope project -- python tools/tickets_server.py</code>. Check status with <code>/mcp</code>.</p>
+  <div class="call exam"><b>Exam signal</b>
+  <p>Secrets never go in <code>.mcp.json</code>. Use <code>${VAR}</code> expansion so each developer or CI runner supplies their own token from the environment. A shared team server goes in project scope, and a personal or experimental one in user or local scope.</p></div>
+</section>
+<section class="sheet" id="integration" data-tag="2.4" data-label="MCP in Claude Code">
+  <div class="sec-head"><span class="tag">Task 2.4</span><h2 class="sec">Integrating MCP servers into Claude Code and agents</h2>
+  <p>Scopes, secrets, discovery, resources, and when to build your own server.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Need</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr><td>Whole team should get the Jira server</td><td>Project scope: <code>.mcp.json</code> in the repo</td></tr>
+      <tr><td>My own experimental server</td><td>User scope: <code>~/.claude.json</code></td></tr>
+      <tr><td>Token must not be committed</td><td><code>"env": {"JIRA_TOKEN": "${JIRA_TOKEN}"}</code> or a header with <code>${…}</code></td></tr>
+      <tr><td>Two servers configured: which tools does the agent get?</td><td>Tools from <strong>all</strong> configured servers are discovered at connection and available at the same time</td></tr>
+      <tr><td>Agent explores to learn what data exists</td><td>Expose a catalog as an MCP <strong>resource</strong> (issue summaries, doc tree, DB schema)</td></tr>
+      <tr><td>Agent uses Grep instead of your better MCP search tool</td><td>Improve the MCP tool's description so it explains what it can do and returns</td></tr>
+      <tr><td>Standard integration (Jira, GitHub)</td><td>Use the existing community server; build custom only for team-specific workflows</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="2.4" data-count="4"></div>
+</section>
+<section class="sheet" id="builtin" data-tag="2.5" data-label="Built-in tools">
+  <div class="sec-head"><span class="tag">Task 2.5</span><h2 class="sec">Built-in tools: Read, Write, Edit, Bash, Grep, Glob</h2>
+  <p>Scenario 4's bread and butter. Know which tool answers which question.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Tool</th><th>Answers</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Grep</strong></td><td>"Which files <em>contain</em> this text?"</td><td>All callers of <code>calculateTax(</code>; where an error message is raised; every <code>import … from "legacy/db"</code></td></tr>
+      <tr><td><strong>Glob</strong></td><td>"Which files <em>are named</em> like this?"</td><td><code>**/*.test.tsx</code>; <code>src/**/migrations/*.sql</code></td></tr>
+      <tr><td><strong>Read</strong></td><td>"Show me this whole file."</td><td>Follow an import to understand a flow</td></tr>
+      <tr><td><strong>Edit</strong></td><td>"Replace this exact, unique text."</td><td>Change one function's body</td></tr>
+      <tr><td><strong>Write</strong></td><td>"Replace or create the whole file."</td><td>New file; or the fallback when Edit can't find a unique anchor</td></tr>
+      <tr><td><strong>Bash</strong></td><td>"Run a command."</td><td>Tests, linters, git, build</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Edit fails on non-unique text</h3>
+  <p>Edit needs its <code>old_string</code> to appear exactly once. If the same line appears in three places, Edit fails. The reliable fallback is <strong>Read the whole file, then Write</strong> it back with the change.</p>
+  <h3>Explore incrementally</h3>
+  <ol>
+    <li>Grep for the entry point (the route, the CLI command, the error string).</li>
+    <li>Read that file and follow its imports with more Reads.</li>
+    <li>Only read what the trace needs. Reading every file first exhausts the context.</li>
+  </ol>
+  <h3>Tracing through wrapper modules</h3>
+  <p>When <code>utils/index.ts</code> re-exports functions under new names, Grepping for the original name misses callers. First list every name the wrapper <strong>exports</strong>, then Grep for <em>each</em> of those names across the codebase.</p>
+  <div class="quiz-embed" data-tasks="2.5" data-count="4"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>

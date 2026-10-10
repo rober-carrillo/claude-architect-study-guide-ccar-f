@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain 1 · Agentic Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="d1" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Domain 1" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Domain 1 · Agentic Architecture &amp; Orchestration</p>
+  <h1>Agents, subagents and hooks</h1>
+  <p class="lede">The agentic loop, the Agent SDK, coordinator–subagent systems, enforcement with hooks, decomposition and sessions. This is the heaviest domain, and its ideas reappear as distractors everywhere else.</p>
+  <div class="facts"><div><b>27%</b><span>of scored items</span></div><div><b>7</b><span>task statements</span></div><div><b>2–2.5 h</b><span>suggested study time</span></div></div><div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="loop" data-tag="1.1" data-label="The agentic loop is driven by stop_reason">
+  <div class="sec-head"><span class="tag">Task 1.1</span><h2 class="sec">The agentic loop is driven by <code>stop_reason</code></h2><p>Continue on tool_use, stop on end_turn. Nothing else decides termination.</p></div>
+<p>Every agent, whether hand-rolled on the Messages API or built with the Agent SDK, runs the same loop. Claude answers; if it asked for a tool, your code runs the tool and sends the result back; repeat until Claude stops asking.</p>
+  <pre class="mermaid">
+flowchart LR
+  A[messages + tools] --> B[Claude]
+  B -->|"stop_reason = tool_use"| C["Run tool(s) in your code"]
+  C -->|"tool_result blocks matched by tool_use_id"| A
+  B -->|"stop_reason = end_turn"| D["Final answer"]
+  B -->|"max_tokens, pause_turn, refusal"| E["Handle explicitly"]
+  </pre>
+
+  <div class="codewrap"><div class="fname"><b>agent_loop.py</b><span>raw Messages API</span></div><pre class="code"><code class="language-python">import anthropic
+
+client = anthropic.Anthropic()
+messages = [{"role": "user", "content": "Is order 4417 eligible for a refund?"}]
+
+while True:
+    resp = client.messages.create(
+        model="claude-sonnet-5-5",
+        max_tokens=4096,
+        system="You are Acme's support agent. Verify the customer before any account action.",
+        tools=TOOLS,          # list of {name, description, input_schema}
+        messages=messages,
+    )
+    # Always append the full assistant turn, including tool_use blocks
+    messages.append({"role": "assistant", "content": resp.content})
+
+    if resp.stop_reason != "tool_use":   # "end_turn" = done
+        break
+
+    results = []
+    for block in resp.content:
+        if block.type == "tool_use":
+            try:
+                out = run_tool(block.name, block.input)
+                results.append({"type": "tool_result", "tool_use_id": block.id, "content": out})
+            except ToolError as e:
+                # Errors go BACK to Claude so it can recover; don't crash the loop
+                results.append({"type": "tool_result", "tool_use_id": block.id,
+                                "content": str(e), "is_error": True})
+    # All results for one turn go in ONE user message
+    messages.append({"role": "user", "content": results})</code></pre></div>
+
+  <div class="call exam"><b>Exam signal</b>
+  <ul>
+    <li>Loop termination is decided by <code>stop_reason</code>, not by scanning the text for "done" or "final answer", and not by an arbitrary iteration cap used as the main control.</li>
+    <li>Tool results go in a <code>user</code> message as <code>tool_result</code> blocks, each tied to its <code>tool_use_id</code>. When Claude requests several tools in one turn, return all their results together in the next message.</li>
+    <li>A tool failure becomes <code>is_error: true</code> in the result so the model can adapt. It should not be an exception that kills the loop.</li>
+  </ul></div>
+  <div class="quiz-embed" data-tasks="1.1" data-count="4"></div>
+</section>
+<section class="sheet" id="sdk" data-tag="1.3" data-label="Agent SDK: the same loop, packaged">
+  <div class="sec-head"><span class="tag">Task 1.3</span><h2 class="sec">Agent SDK: the same loop, packaged</h2><p>query(), options, in-process tools.</p></div>
+<p>The Claude Agent SDK (<code>claude-agent-sdk</code> for Python, <code>@anthropic-ai/claude-agent-sdk</code> for TypeScript) is the harness Claude Code runs on. It runs the loop for you and adds built-in tools (Read, Write, Edit, Bash, Grep, Glob, WebFetch…), permissions, sessions, subagents, hooks and MCP.</p>
+
+  <div class="codewrap"><div class="fname"><b>support_agent.py</b><span>minimum SDK skeleton</span></div><pre class="code"><code class="language-python">import asyncio, json
+from claude_agent_sdk import (query, ClaudeAgentOptions, ResultMessage,
+                              tool, create_sdk_mcp_server)
+
+# 1. A custom tool, served by an in-process MCP server
+@tool("lookup_order",
+      "Look up one order by its ID (format ORD-12345). Returns status, total, "
+      "purchase date and refund_eligible. Use before any refund decision.",
+      {"order_id": str})
+async def lookup_order(args):
+    order = await db.get_order(args["order_id"])
+    if order is None:
+        return {"content": [{"type": "text",
+                 "text": "No order with that ID. Ask the customer to confirm it."}],
+                "is_error": True}
+    return {"content": [{"type": "text", "text": json.dumps(order)}]}
+
+billing = create_sdk_mcp_server(name="billing", version="1.0.0", tools=[lookup_order])
+
+# 2. Options: who the agent is, what it may touch
+options = ClaudeAgentOptions(
+    system_prompt="You are Acme's support agent...",
+    mcp_servers={"billing": billing},
+    allowed_tools=["mcp__billing__lookup_order"],   # mcp__&lt;server&gt;__&lt;tool&gt;
+    permission_mode="default",       # default | acceptEdits | plan | bypassPermissions
+    max_turns=15,
+)
+
+# 3. Run: query() streams messages until the loop ends
+async def main():
+    async for msg in query(prompt="Can I get a refund on ORD-44170?", options=options):
+        if isinstance(msg, ResultMessage):
+            print(msg.result, msg.total_cost_usd, msg.session_id)
+
+asyncio.run(main())</code></pre></div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Piece</th><th>What it is</th><th>When you reach for it</th></tr></thead>
+    <tbody>
+      <tr><td><code>query()</code></td><td>One-shot async iterator: prompt in, stream of messages out</td><td>Single tasks, scripts, CI jobs</td></tr>
+      <tr><td><code>ClaudeSDKClient</code></td><td>Stateful client that keeps a conversation open</td><td>Multi-turn chat, follow-ups, interrupts</td></tr>
+      <tr><td><code>@tool</code> + <code>create_sdk_mcp_server</code></td><td>In-process MCP server, no subprocess</td><td>Your own functions as tools</td></tr>
+      <tr><td><code>allowed_tools</code> / <code>disallowed_tools</code></td><td>Tool allow and deny lists</td><td>Least privilege per agent</td></tr>
+      <tr><td><code>agents</code></td><td>Named subagent definitions</td><td>Delegation, parallel work, context isolation</td></tr>
+      <tr><td><code>hooks</code></td><td>Callbacks on lifecycle events</td><td>Deterministic policy, logging, output rewriting</td></tr>
+      <tr><td><code>resume</code> / <code>fork_session</code></td><td>Continue a prior session, or branch a copy of it</td><td>Long tasks across runs; trying two approaches from one baseline</td></tr>
+      <tr><td><code>setting_sources</code></td><td>Whether to load CLAUDE.md, skills and settings from disk</td><td>Reusing a repo's Claude Code config inside an SDK app</td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="sheet" id="subagents" data-tag="1.3" data-label="Subagents">
+  <div class="sec-head"><span class="tag">Task 1.3</span><h2 class="sec">Subagents: context isolation is the point</h2><p>Explicit context, parallel Task calls, scoped tools.</p></div>
+<p>A subagent is a separate Claude instance with its own system prompt, its own tool set and its <strong>own, empty context window</strong>. The coordinator invokes it through the Task tool (called <code>Agent</code> in newer Claude Code builds). The subagent works, and only its <strong>final message</strong> comes back to the coordinator.</p>
+
+  <pre class="mermaid">
+flowchart TB
+  U[User request] --> C[Coordinator agent]
+  C -->|"Task: full brief + data"| S1["Subagent: web search"]
+  C -->|"Task: full brief + data"| S2["Subagent: doc analysis"]
+  C -->|"Task: full brief + data"| S3["Subagent: synthesis"]
+  S1 -->|"final message only"| C
+  S2 -->|"final message only"| C
+  S3 -->|"final message only"| C
+  C --> R[Answer]
+  </pre>
+
+  <div class="codewrap"><div class="fname"><b>research_coordinator.py</b><span>subagents in the SDK</span></div><pre class="code"><code class="language-python">from claude_agent_sdk import ClaudeAgentOptions, AgentDefinition
+
+options = ClaudeAgentOptions(
+    allowed_tools=["Task", "Read", "Grep", "Glob", "WebSearch"],  # coordinator needs Task
+    agents={
+        "web-researcher": AgentDefinition(
+            # description = WHEN to delegate. The coordinator routes on this text.
+            description="Finds and summarizes primary sources on the web. "
+                        "Use for any factual claim that needs a citation.",
+            prompt="You research one question. Return findings as a list of "
+                   "{claim, source_url, quote, date}. Say what you could not find.",
+            tools=["WebSearch", "WebFetch"],       # least privilege
+            model="sonnet",
+        ),
+        "doc-analyst": AgentDefinition(
+            description="Reads local documents and extracts facts with page refs.",
+            prompt="...",
+            tools=["Read", "Grep", "Glob"],
+        ),
+    },
+)</code></pre></div>
+
+  <p>The same subagent as a Claude Code file, which the SDK also picks up when <code>setting_sources</code> includes the project:</p>
+  <div class="codewrap"><div class="fname"><b>.claude/agents/web-researcher.md</b><span>frontmatter + system prompt</span></div><pre class="code"><code class="language-markdown">---
+name: web-researcher
+description: Finds and summarizes primary sources on the web. Use for any factual claim that needs a citation.
+tools: WebSearch, WebFetch
+model: sonnet
+---
+You research one question. Return findings as a list of
+{claim, source_url, quote, date}. Say explicitly what you could not find.</code></pre></div>
+
+  <div class="call exam"><b>Exam signal</b>
+  <ul>
+    <li><strong>Subagents inherit nothing.</strong> They do not see the coordinator's conversation. The Task prompt must carry everything: the goal, constraints, the data or prior findings, and the output format wanted.</li>
+    <li><strong>Parallelism comes from emitting several Task calls in one assistant turn.</strong> Calls spread across turns run one after another.</li>
+    <li>The coordinator owns decomposition, routing, aggregation and error handling. Subagents should return structured results with metadata (source, date, confidence, gaps) so the coordinator can merge and cite them.</li>
+    <li>Give each subagent only the tools its role needs. A synthesis agent with web search will wander off and research instead of synthesizing.</li>
+    <li>Subagents are good for keeping noisy exploration (big file reads, many search results) out of the main context. Only the summary comes back.</li>
+  </ul></div>
+
+  <div class="call trap"><b>Trap</b>
+  <ul>
+    <li>"The final report missed whole subtopics" → the usual root cause is the <em>coordinator's decomposition</em> being too narrow, not the subagents doing poor work. Fix where the scope was set.</li>
+    <li>Answers that let subagents talk to each other directly, or share one global memory, break the hub-and-spoke model the exam favours. Route through the coordinator for observability and consistent error handling.</li>
+    <li>Not every task needs multiple agents. Fixed, predictable steps are better as a <strong>prompt chain</strong> (step 1 output → step 2 input) or a single agent. Multi-agent costs more tokens and adds coordination failure modes.</li>
+  </ul></div>
+
+  <h4>Orchestration patterns to recognise</h4>
+  <div class="tbl"><table>
+    <thead><tr><th>Pattern</th><th>Shape</th><th>Use when</th></tr></thead>
+    <tbody>
+      <tr><td>Prompt chaining</td><td>Fixed sequence, each step's output feeds the next, with gates between</td><td>Steps are known ahead of time (extract → validate → summarize)</td></tr>
+      <tr><td>Routing</td><td>Classifier picks one specialist path</td><td>Distinct input categories (billing vs tech support)</td></tr>
+      <tr><td>Parallelization</td><td>Same or different tasks fanned out, results merged or voted on</td><td>Independent subtasks; multiple reviewers for confidence</td></tr>
+      <tr><td>Orchestrator–workers</td><td>Coordinator decides subtasks at runtime</td><td>Open-ended research or coding where the subtasks aren't known upfront</td></tr>
+      <tr><td>Evaluator–optimizer</td><td>Generator plus a separate critic in a loop</td><td>Clear quality criteria and iteration helps (translation, code review)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="1.3" data-count="4"></div>
+</section>
+<section class="sheet" id="coordinator" data-tag="1.2" data-label="Coordinator design">
+  <div class="sec-head"><span class="tag">Task 1.2</span><h2 class="sec">Designing the coordinator</h2>
+  <p>In a hub-and-spoke system the coordinator does most of the architecting. Most Scenario 3 questions are about what it does well or badly.</p></div>
+
+  <h3>The coordinator's four jobs</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Job</th><th>Done well</th><th>Done badly (what the question will show)</th></tr></thead>
+    <tbody>
+      <tr><td>Decompose</td><td>Breaks the topic into subtopics that together cover it, each distinct</td><td>"AI in creative industries" split into three visual-arts subtopics, so music and film never get researched</td></tr>
+      <tr><td>Select</td><td>Picks only the subagents this query needs</td><td>Every query, even "what year was X founded", runs through search → analysis → synthesis → report</td></tr>
+      <tr><td>Route</td><td>All subagent traffic passes through it, giving one place for logging, errors and control</td><td>Subagents call each other directly; a failure in one is invisible to the rest</td></tr>
+      <tr><td>Aggregate and check</td><td>Reads synthesis output for gaps and sends targeted follow-ups</td><td>Accepts the first synthesis even when whole sections say "no data"</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Partition scope to avoid duplicated work</h3>
+  <p>If two search subagents get overlapping briefs, they return the same five articles and you pay twice. Give each a <strong>distinct subtopic or source type</strong>:</p>
+  <div class="two">
+    <div class="bad"><h4>Overlapping</h4><p>Agent A: "Research AI in music."<br>Agent B: "Research AI and musicians' jobs."</p></div>
+    <div class="good"><h4>Partitioned</h4><p>Agent A: "Peer-reviewed studies on AI in music, 2022+."<br>Agent B: "Industry reports and labour statistics on music employment."</p></div>
+  </div>
+
+  <h3>Brief subagents with goals and quality bars, not procedures</h3>
+  <p>The official guide says coordinator prompts should "specify research goals and quality criteria rather than step-by-step procedural instructions". A subagent that only has steps can't adapt when step 2 finds nothing.</p>
+  <div class="two">
+    <div class="bad"><h4>Procedural</h4><p>"Search Google for 'AI music'. Open the first 5 results. Summarize each in 3 sentences."</p></div>
+    <div class="good"><h4>Goal + criteria</h4><p>"Find evidence on how generative AI changed music-production employment since 2022. Prefer primary data. Return 5–10 claims, each with source URL, date and a supporting quote. List the questions you couldn't answer."</p></div>
+  </div>
+
+  <h3>The iterative refinement loop</h3>
+  <pre class="mermaid">
+flowchart LR
+  C[Coordinator] -->|"targeted queries"| S[Search + analysis subagents]
+  S -->|"structured findings"| Y[Synthesis subagent]
+  Y -->|"draft + coverage gaps"| C
+  C -->|"gaps remain"| S
+  C -->|"coverage sufficient"| R[Report]
+  </pre>
+  <p>The coordinator reads the synthesis for gaps ("no data on film"), sends search and analysis subagents <em>targeted</em> follow-up queries, and runs synthesis again until coverage is good enough.</p>
+
+  <h3>Multi-concern requests (Scenario 1 version)</h3>
+  <p>"My order arrived damaged, I was charged twice, and I want to change my address." Split it into three distinct items, investigate each (in parallel where they're independent) using shared context such as the verified customer ID, then write <strong>one</strong> unified reply. Don't answer the first concern and drop the rest, and don't make three separate replies.</p>
+
+  <div class="call trap"><b>Trap</b><p>When a scenario says each subagent "completed successfully" but the output is incomplete, the fault is upstream in the coordinator's decomposition or selection. Answers that tune the search queries or the synthesis prompt fix the wrong layer.</p></div>
+  <div class="quiz-embed" data-tasks="1.2" data-count="4"></div>
+</section>
+<section class="sheet" id="decomposition" data-tag="1.6" data-label="Task decomposition">
+  <div class="sec-head"><span class="tag">Task 1.6</span><h2 class="sec">Choosing a decomposition strategy</h2>
+  <p>Fixed pipeline or adaptive plan? It depends on whether you know the steps before you start.</p></div>
+
+  <div class="two">
+    <div><h4>Prompt chaining (fixed)</h4>
+      <p>The steps are known in advance and always the same. Each step is a focused prompt whose output feeds the next.</p>
+      <ul><li>Per-file review → cross-file integration review</li><li>Extract → validate → normalize → summarize</li><li>Multi-aspect review: security pass, then performance pass, then docs pass</li></ul></div>
+    <div><h4>Dynamic decomposition (adaptive)</h4>
+      <p>The next subtasks depend on what the last step found. The plan changes as you learn.</p>
+      <ul><li>"Add comprehensive tests to a legacy codebase"</li><li>Open-ended research questions</li><li>Debugging an intermittent production failure</li></ul></div>
+  </div>
+
+  <h3>Worked example: tests for a legacy codebase</h3>
+  <ol>
+    <li><strong>Map the structure</strong> first: entry points, modules, existing tests (Glob <code>**/*test*</code>, Grep for imports).</li>
+    <li><strong>Find high-impact areas</strong>: code that handles money, auth or most traffic, and has no tests.</li>
+    <li><strong>Write a prioritized plan</strong>, then start on the top item.</li>
+    <li><strong>Adapt</strong>: when you discover that <code>billing/</code> depends on an untested <code>tax/</code> module, add <code>tax/</code> to the plan ahead of it.</li>
+  </ol>
+  <p>Wrong answers here: "generate tests for every file alphabetically" (no prioritisation), "read every file first" (exhausts the context window), or a fixed plan written before looking at the code.</p>
+
+  <h3>Worked example: splitting a large review</h3>
+  <p>One pass over 14 files gives uneven depth and contradictory findings, because attention is diluted. Split it into a <strong>prompt chain</strong>:</p>
+  <div class="codewrap"><div class="fname"><b>review_chain.py</b><span>per-file passes, then integration</span></div><pre class="code"><code class="language-python">local_findings = []
+for path in changed_files:                       # pass 1..N: one file each, focused attention
+    local_findings += review_file(path, diff_for(path), criteria=CRITERIA)
+
+integration = review_integration(                # final pass: cross-file data flow only
+    summaries=[summarize(p) for p in changed_files],
+    focus="changed signatures, shared state, call sites across files",
+)
+post_comments(dedupe(local_findings + integration))</code></pre></div>
+
+  <div class="call exam"><b>Exam signal</b><p>"Predictable, multi-aspect review" → prompt chaining. "Open-ended investigation" → dynamic decomposition. If the question describes inconsistent depth across many files, the answer is to split the passes, not to use a bigger context window or require smaller PRs.</p></div>
+  <div class="quiz-embed" data-tasks="1.6" data-count="3"></div>
+</section>
+<section class="sheet" id="hooks" data-tag="1.5" data-label="Hooks">
+  <div class="sec-head"><span class="tag">Task 1.5</span><h2 class="sec">Hooks: deterministic control over a probabilistic model</h2><p>Deterministic guarantees vs probabilistic compliance.</p></div>
+<p>A hook is your code, run by the harness at a lifecycle event. It executes whatever the model decides, which makes it the place for rules that <em>must</em> hold: compliance limits, blocking dangerous commands, normalizing data, audit logging.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Event</th><th>Fires</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><code>PreToolUse</code></td><td>Before a tool runs; can allow, deny, ask, or modify the input</td><td>Block refunds over a limit; block <code>rm -rf</code>; require approval</td></tr>
+      <tr><td><code>PostToolUse</code></td><td>After a tool returns</td><td>Run the formatter or linter after edits; normalize or trim tool output before the model sees it</td></tr>
+      <tr><td><code>UserPromptSubmit</code></td><td>When a prompt is submitted</td><td>Inject context, reject prompts that break policy</td></tr>
+      <tr><td><code>Stop</code> / <code>SubagentStop</code></td><td>When the agent or a subagent finishes</td><td>Verify the work is really done (tests pass) and send it back if not</td></tr>
+      <tr><td><code>PreCompact</code></td><td>Before context compaction</td><td>Save the transcript or key facts first</td></tr>
+      <tr><td><code>SessionStart</code> / <code>SessionEnd</code></td><td>Session boundaries</td><td>Load environment context; clean up</td></tr>
+      <tr><td><code>Notification</code></td><td>When the agent needs attention</td><td>Desktop or Slack alert</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="codewrap"><div class="fname"><b>refund_guard.py</b><span>SDK hook, enforces a business rule</span></div><pre class="code"><code class="language-python">from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
+
+async def cap_refunds(input_data, tool_use_id, context):
+    amount = input_data["tool_input"].get("amount", 0)
+    if amount &gt; 500:
+        return {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",           # allow | deny | ask
+            "permissionDecisionReason":
+                "Refunds over $500 need a human. Escalate with a case summary instead.",
+        }}
+    return {}   # no opinion → normal permission flow continues
+
+options = ClaudeAgentOptions(hooks={
+    "PreToolUse": [HookMatcher(matcher="mcp__billing__issue_refund", hooks=[cap_refunds])],
+})</code></pre></div>
+
+  <div class="codewrap"><div class="fname"><b>.claude/settings.json</b><span>the same idea as a Claude Code shell hook</span></div><pre class="code"><code class="language-json">{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/block-prod-db.sh" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/format.sh" }] }
+    ]
+  }
+}</code></pre></div>
+  <p>A command hook gets the event as JSON on <strong>stdin</strong> (<code>tool_name</code>, <code>tool_input</code>, <code>session_id</code>…). Exit code <code>0</code> means continue. Exit code <code>2</code> means block, and whatever the script wrote to stderr is fed back to Claude as the reason. A hook can also print a JSON decision to stdout instead.</p>
+
+  <div class="call exam"><b>Exam signal: prompt vs hook</b>
+  <p>"The agent occasionally skips identity verification before a refund" or "sometimes exceeds the refund limit". When a rule has financial, legal or safety consequences, the right answer is <strong>programmatic enforcement</strong>: a PreToolUse hook, or a tool that checks a prerequisite before running. A stronger prompt, few-shot examples or ALL-CAPS warnings only make compliance more likely. A hook makes it certain.</p></div>
+</section>
+<section class="sheet" id="enforcement" data-tag="1.4" data-label="Gates & handoffs">
+  <div class="sec-head"><span class="tag">Tasks 1.4 · 1.5</span><h2 class="sec">Prerequisite gates, normalization and handoffs</h2>
+  <p>Three hook and workflow patterns the guide names explicitly, with code you can adapt.</p></div>
+
+  <h3>1. A prerequisite gate</h3>
+  <p>"Block <code>process_refund</code> until <code>get_customer</code> has returned a verified customer ID." A prompt makes this <em>likely</em>, and a gate makes it <em>certain</em>. A gate is state your code keeps, checked before the tool runs.</p>
+  <div class="codewrap"><div class="fname"><b>gates.py</b><span>PreToolUse gate keyed on session state</span></div><pre class="code"><code class="language-python">verified = {}   # session_id -&gt; customer_id, filled when get_customer succeeds
+
+async def remember_verification(input_data, tool_use_id, context):      # PostToolUse
+    if input_data["tool_name"] == "mcp__crm__get_customer":
+        result = parse(input_data["tool_response"])
+        if result.get("verified"):
+            verified[input_data["session_id"]] = result["customer_id"]
+    return {}
+
+async def require_verification(input_data, tool_use_id, context):       # PreToolUse
+    if input_data["tool_name"] in ("mcp__billing__lookup_order", "mcp__billing__process_refund"):
+        if input_data["session_id"] not in verified:
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "Verify the customer with get_customer first.",
+            }}
+    return {}</code></pre></div>
+  <p>The deny reason is sent back to Claude, so the agent learns <em>what to do instead</em>. A good gate redirects as well as blocks.</p>
+
+  <h3>2. Normalizing tool output before Claude sees it</h3>
+  <p>Three MCP servers return dates as <code>1767225600</code>, <code>"2026-01-01T00:00:00Z"</code> and <code>"01/01/26"</code>, and status as <code>3</code> or <code>"SHIPPED"</code>. The agent then compares them wrongly. A <strong>PostToolUse</strong> hook can rewrite every result into one format so the model never has to guess.</p>
+  <div class="codewrap"><div class="fname"><b>normalize.py</b><span>PostToolUse: one format for every tool</span></div><pre class="code"><code class="language-python">STATUS = {1: "pending", 2: "paid", 3: "shipped", 4: "returned"}
+
+def to_iso(v):
+    if isinstance(v, (int, float)):                      # Unix seconds
+        return datetime.fromtimestamp(v, tz=timezone.utc).isoformat()
+    return dateparser.parse(v).astimezone(timezone.utc).isoformat()
+
+async def normalize(input_data, tool_use_id, context):
+    data = parse(input_data["tool_response"])
+    for k in ("created_at", "shipped_at", "updated"):
+        if k in data: data[k] = to_iso(data[k])
+    if isinstance(data.get("status"), int):
+        data["status"] = STATUS[data["status"]]
+    keep = {"order_id", "status", "created_at", "shipped_at", "total_cents", "refund_eligible"}
+    data = {k: v for k, v in data.items() if k in keep}  # trim the 40-field payload too
+    return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
+            "additionalContext": json.dumps(data)}}</code></pre></div>
+  <p class="small">The exact mechanism for replacing or annotating a tool result differs between SDK versions. For the exam, what matters is that a PostToolUse hook can transform results <em>before the model reasons over them</em>.</p>
+
+  <h3>3. The handoff summary</h3>
+  <p>When the agent escalates mid-process, the human agent <strong>can't see the transcript</strong>. The handoff must stand on its own:</p>
+  <div class="codewrap"><div class="fname"><b>escalate_to_human input</b><span>structured, not a transcript dump</span></div><pre class="code"><code class="language-json">{
+  "customer_id": "C-2201",
+  "verified": true,
+  "issue": "Duplicate charge on ORD-44170 ($1,240.50 × 2 on 2026-03-03)",
+  "root_cause": "Payment retry after gateway timeout created a second capture",
+  "requested": "Refund of the duplicate charge",
+  "amount_cents": 124050,
+  "why_escalated": "Refund exceeds the $500 autonomous limit",
+  "recommended_action": "Approve refund of duplicate capture ch_9f2…; no goodwill credit needed",
+  "customer_expectation": "Told the customer a specialist will reply within 24 hours"
+}</code></pre></div>
+  <div class="quiz-embed" data-tasks="1.4,1.5" data-count="4"></div>
+</section>
+<section class="sheet" id="sessions" data-tag="1.7" data-label="Sessions">
+  <div class="sec-head"><span class="tag">Task 1.7</span><h2 class="sec">Sessions: resume, fork or start fresh</h2>
+  <p>Long investigations span days. The choice is about whether the old context is still true.</p></div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Situation</th><th>Choose</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Picking up yesterday's investigation; little has changed</td><td><strong>Resume</strong> the named session</td><td><code>claude --resume auth-refactor</code> (SDK: <code>resume=&lt;session id&gt;</code>)</td></tr>
+      <tr><td>Resuming, but you've since edited 3 of the files it analyzed</td><td><strong>Resume and say what changed</strong></td><td>"Since last time I changed <code>auth/session.ts</code> and <code>auth/token.ts</code>; re-check those two."</td></tr>
+      <tr><td>A large refactor landed; most earlier tool results are stale</td><td><strong>Fresh session + injected summary</strong></td><td>Start new and paste a structured summary of the conclusions that still hold</td></tr>
+      <tr><td>Want to compare two approaches from the same analysis</td><td><strong>Fork</strong></td><td><code>fork_session=True</code> with <code>resume</code> (CLI: <code>--resume … --fork-session</code>)</td></tr>
+      <tr><td>Context window full of exploration output, same task continues</td><td><strong>/compact</strong></td><td>Summarizes history in place; optionally say what to keep</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="codewrap"><div class="fname"><b>fork_compare.py</b><span>two strategies, one baseline</span></div><pre class="code"><code class="language-python">base = await run(query(prompt="Analyze the payments module's test gaps.", options=opts))
+baseline_id = base.session_id
+
+unit = query(prompt="Plan a unit-test-first strategy.",
+             options=replace(opts, resume=baseline_id, fork_session=True))
+contract = query(prompt="Plan a contract-test-first strategy.",
+                 options=replace(opts, resume=baseline_id, fork_session=True))
+# Each fork starts from the same analysis and diverges independently.</code></pre></div>
+
+  <div class="call trap"><b>Trap</b>
+  <ul>
+    <li>Resuming a session full of <strong>stale tool results</strong> means the agent "remembers" code that no longer exists. If the question stresses that the code changed a lot, start fresh with a summary.</li>
+    <li>Forking is for <em>exploring alternatives</em>. It is not a fix for a full context window. <code>/compact</code> is.</li>
+    <li>Re-exploring the whole codebase after a small change wastes the session. Tell it which files changed.</li>
+  </ul></div>
+
+  <h3>Crash recovery with manifests</h3>
+  <p>For long multi-agent runs: each agent periodically writes its state (task, progress, findings so far) to a known location. A <strong>manifest</strong> lists those files. On restart the coordinator loads the manifest and injects each agent's saved state into its prompt, so work resumes instead of restarting.</p>
+  <div class="codewrap"><div class="fname"><b>state/manifest.json</b><span>loaded by the coordinator on resume</span></div><pre class="code"><code class="language-json">{
+  "run_id": "research-2026-10-10",
+  "agents": {
+    "web-search":   { "state": "state/web-search.json",  "status": "done" },
+    "doc-analysis": { "state": "state/doc-analysis.json", "status": "in_progress", "cursor": 14 },
+    "synthesis":    { "state": null, "status": "pending" }
+  }
+}</code></pre></div>
+  <div class="quiz-embed" data-tasks="1.7" data-count="3"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>

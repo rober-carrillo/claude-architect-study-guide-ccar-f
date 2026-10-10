@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flashcards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-base="" data-page="flash">
+<div class="shell wide">
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Recall · 10–15 minutes a day</p>
+  <h1>Flashcards</h1>
+  <p class="lede">Leitner boxes: every card starts in box 1. "Got it" moves it up a box; "Again" sends it back to box 1. Lower boxes come up first, so your weak cards get the most repetition.</p>
+  <div class="row">
+    <label class="field">Domain<select id="fc-dom"><option value="">All domains</option></select></label>
+    <label class="field">Cards from<select id="fc-box"><option value="3">Boxes 1–3 (learning)</option><option value="5">All boxes</option><option value="1">Box 1 only</option></select></label>
+    <button class="btn" type="button" id="fc-go" style="align-self:end">Start session</button>
+  </div>
+  <div class="boxes" id="fc-boxes" style="margin-top:14px"></div>
+</section>
+
+<section class="sheet" id="session">
+  <div class="sec-head"><span class="tag" id="fc-meta">Session</span><h2 class="sec" id="fc-progress">Pick a deck and start</h2>
+  <p>Keyboard: <code>Space</code> flips, <code>1</code> = Again, <code>2</code> = Got it.</p></div>
+  <div class="flash"><div class="flash-card" id="fc-card">
+    <span class="face-lbl" id="fc-lbl">Front</span>
+    <div class="front" id="fc-front">Start a session to see your first card.</div>
+    <div class="back" id="fc-back" hidden></div>
+  </div></div>
+  <div class="row" style="margin-top:14px">
+    <button class="btn ghost" type="button" id="fc-flip" disabled>Show answer</button>
+    <button class="btn ghost" type="button" id="fc-again" disabled>Again (1)</button>
+    <button class="btn" type="button" id="fc-good" disabled>Got it (2)</button>
+  </div>
+</section>
+</main>
+</div>
+<footer class="footer">Flashcards written for this guide from the official exam guide's task statements.</footer>
+<script src="assets/js/data/flashcards.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+(function () {
+  const { store, shuffle, DOM } = window.CCA;
+  const cards = window.FLASHCARDS || [];
+  const $ = (id) => document.getElementById(id);
+  for (let d = 1; d <= 5; d++) $("fc-dom").insertAdjacentHTML("beforeend", `<option value="${d}">D${d} · ${DOM[d]}</option>`);
+  const boxOf = (c) => Math.max(1, store.get("fc:" + c.id, { box: 1 }).box || 1);
+
+  function paintBoxes() {
+    const dom = +$("fc-dom").value || null;
+    const counts = [0, 0, 0, 0, 0];
+    cards.filter((c) => !dom || c.domain === dom).forEach((c) => counts[boxOf(c) - 1]++);
+    $("fc-boxes").innerHTML = counts.map((n, i) => `<span>Box ${i + 1}: ${n}</span>`).join("");
+  }
+
+  let queue = [], cur = null, flipped = false, seen = 0, total = 0;
+  function next() {
+    cur = queue.shift();
+    flipped = false;
+    $("fc-back").hidden = true;
+    $("fc-lbl").textContent = "Front";
+    if (!cur) {
+      $("fc-front").textContent = "Session complete. Start another, or come back tomorrow.";
+      $("fc-progress").textContent = `Done: ${seen} cards reviewed`;
+      ["fc-flip", "fc-again", "fc-good"].forEach((id) => ($(id).disabled = true));
+      paintBoxes();
+      return;
+    }
+    $("fc-meta").textContent = `D${cur.domain} · box ${boxOf(cur)}`;
+    $("fc-progress").textContent = `Card ${seen + 1} of ${total}`;
+    $("fc-front").innerHTML = cur.front;
+    $("fc-back").innerHTML = cur.back;
+    $("fc-flip").disabled = false;
+    $("fc-again").disabled = true;
+    $("fc-good").disabled = true;
+  }
+  function flip() {
+    if (!cur || flipped) return;
+    flipped = true;
+    $("fc-back").hidden = false;
+    $("fc-lbl").textContent = "Front → answer";
+    $("fc-flip").disabled = true;
+    $("fc-again").disabled = false;
+    $("fc-good").disabled = false;
+  }
+  function grade(ok) {
+    if (!cur || !flipped) return;
+    const box = ok ? Math.min(5, boxOf(cur) + 1) : 1;
+    store.set("fc:" + cur.id, { box, t: Date.now() });
+    if (!ok) queue.splice(Math.min(queue.length, 4), 0, cur);   // see it again soon
+    else seen++;
+    next();
+  }
+  $("fc-go").addEventListener("click", () => {
+    const dom = +$("fc-dom").value || null, maxBox = +$("fc-box").value;
+    const pool = cards.filter((c) => (!dom || c.domain === dom) && boxOf(c) <= maxBox);
+    queue = shuffle(pool).sort((a, b) => boxOf(a) - boxOf(b)).slice(0, 30);
+    total = queue.length; seen = 0;
+    next();
+  });
+  $("fc-flip").addEventListener("click", flip);
+  $("fc-again").addEventListener("click", () => grade(false));
+  $("fc-good").addEventListener("click", () => grade(true));
+  $("fc-dom").addEventListener("change", paintBoxes);
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("select, input")) return;
+    if (e.code === "Space") { e.preventDefault(); flip(); }
+    if (e.key === "1") grade(false);
+    if (e.key === "2") grade(true);
+  });
+  paintBoxes();
+})();
+</script>
+</body>
+</html>

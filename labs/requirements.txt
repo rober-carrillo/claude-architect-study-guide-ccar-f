@@ -1,0 +1,7 @@
+# Python >= 3.10 (anthropic 1.x requires it).
+# Verified on 2026-10-10 with: anthropic 1.13.0, mcp 2.3.0 (lab 02 also run on mcp 1.30.0),
+# claude-agent-sdk 0.2.165, pydantic 2.14.0.
+anthropic>=1.13,<2
+mcp>=1.30          # lab 02 runs on 1.x (FastMCP) and 2.x (MCPServer)
+claude-agent-sdk>=0.2   # bundles the Claude Code CLI used by lab 05
+pydantic>=2.7

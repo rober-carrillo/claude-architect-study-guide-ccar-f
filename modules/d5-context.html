@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain 5 · Context & Reliability</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="d5" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Domain 5" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Domain 5 · Context Management &amp; Reliability</p>
+  <h1>Context, escalation and trust</h1>
+  <p class="lede">Preserving facts across long conversations, escalation decisions, error propagation, large-codebase exploration, human review and calibration, and provenance in synthesis.</p>
+  <div class="facts"><div><b>15%</b><span>of scored items</span></div><div><b>6</b><span>task statements</span></div><div><b>1.5 h</b><span>suggested study time</span></div></div><div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="growth" data-tag="5.1" data-label="What goes wrong as context grows">
+  <div class="sec-head"><span class="tag">Task 5.1</span><h2 class="sec">What goes wrong as context grows</h2><p>Failure modes and the techniques that fix them.</p></div>
+<ul>
+    <li><strong>Lost in the middle</strong>: material in the middle of a very long context gets less attention than the beginning and end. Put key facts and instructions where they are easy to find, and repeat critical constraints near the end.</li>
+    <li><strong>Summary drift</strong>: each round of summarizing turns specifics ("$1,240.50 charged twice on 3 March, order ORD-44170") into vague prose ("a billing issue"). Numbers, IDs and dates go first.</li>
+    <li><strong>Tool-output bloat</strong>: a single API response with 40 fields per row fills the window with noise.</li>
+    <li><strong>Stale context</strong>: after a long session, early tool results may no longer be true (files changed, tickets moved).</li>
+  </ul>
+
+  <h3>Techniques</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Technique</th><th>How</th><th>Solves</th></tr></thead>
+    <tbody>
+      <tr><td>Persistent facts block</td><td>Keep a structured "case facts" block (IDs, amounts, dates, decisions so far) outside the summarized history and include it with every request</td><td>Summary drift on critical values</td></tr>
+      <tr><td>Trim at the source</td><td>A PostHook or the tool itself returns only relevant fields</td><td>Tool-output bloat</td></tr>
+      <tr><td>Delegate exploration</td><td>A subagent reads 50 files and returns a 30-line summary</td><td>Main context filled by search noise</td></tr>
+      <tr><td>Scratchpad / state files</td><td>The agent writes findings to a file (e.g. <code>NOTES.md</code>, <code>progress.json</code>) and re-reads it after a reset</td><td>Very long tasks across compactions or sessions</td></tr>
+      <tr><td>Compaction</td><td><code>/compact</code> (optionally "keep the API decisions") or automatic compaction near the limit; <code>/clear</code> to start fresh</td><td>Long conversations</td></tr>
+      <tr><td>Prompt caching</td><td>Stable prefix (system prompt, tools, big documents) first, then <code>cache_control</code></td><td>Cost and latency of re-sending the same large context</td></tr>
+      <tr><td>Quote first, then answer</td><td>For long documents, ask Claude to pull the relevant quotes into tags, then answer from them</td><td>Accuracy on long-document Q&amp;A</td></tr>
+      <tr><td>Fresh session with a summary</td><td>Start a new session seeded with a structured summary instead of resuming a stale one</td><td>Stale tool results after code changed</td></tr>
+    </tbody>
+  </table></div>
+</section>
+<section class="sheet" id="position" data-tag="5.1" data-label="Case facts & ordering">
+  <div class="sec-head"><span class="tag">Task 5.1</span><h2 class="sec">Case facts, trimming and position-aware input</h2>
+  <p>What a long support conversation actually sends to Claude on turn 30.</p></div>
+  <div class="codewrap"><div class="fname"><b>request on turn 30</b><span>facts outside the summarized history</span></div><pre class="code"><code class="language-xml">&lt;system&gt;You are Acme's support agent… (policies)&lt;/system&gt;
+
+&lt;case_facts&gt;            ← persistent, updated by code, never summarized
+  customer_id: C-2201 (verified 14:02)
+  issue_1: ORD-44170 duplicate charge, $1,240.50 × 2 on 2026-03-03, status: refund pending approval
+  issue_2: ORD-44188 damaged item, photo received, replacement shipped TRK-889
+  customer_expectation: "refund before Friday 2026-03-13"
+&lt;/case_facts&gt;
+
+&lt;summary_of_turns_1_24&gt;…&lt;/summary_of_turns_1_24&gt;
+…turns 25–29 verbatim, with order lookups trimmed to 6 relevant fields…
+&lt;user&gt;So when will I see the money?&lt;/user&gt;</code></pre></div>
+  <ul>
+    <li>Summaries turn "$1,240.50 by Friday" into "a refund soon". The facts block keeps the exact values.</li>
+    <li>With several issues in one session, keep a structured entry per issue (ID, amount, status).</li>
+    <li>Trim tool results to the fields that matter before they pile up (6 of 40).</li>
+    <li>The Messages API is stateless: send the complete (managed) history on every request.</li>
+  </ul>
+  <h3>Mitigating lost-in-the-middle in aggregated input</h3>
+  <p>When the synthesis agent receives 30 subagent reports, findings in the middle get dropped. Put a <strong>key-findings summary at the start</strong>, and organize the details under <strong>explicit section headers</strong>. If the downstream agent has a small context budget, change the <strong>upstream</strong> agents to return structured facts, citations and relevance scores instead of verbose reasoning.</p>
+  <div class="quiz-embed" data-tasks="5.1" data-count="4"></div>
+</section>
+<section class="sheet" id="handoffs" data-tag="5.1" data-label="Handoffs between agents">
+  <div class="sec-head"><span class="tag">Task 5.1</span><h2 class="sec">Handoffs between agents</h2></div>
+<p>A handoff is a context boundary. Whatever isn't written into the handoff is gone. A good handoff payload looks like this:</p>
+  <div class="codewrap"><div class="fname"><b>handoff payload</b><span>coordinator → subagent, or agent → human</span></div><pre class="code"><code class="language-json">{
+  "goal": "Decide whether ORD-44170 qualifies for a refund under policy v3",
+  "facts": { "customer_id": "C-2201", "verified": true, "order_total_cents": 124050,
+             "charged_twice": true, "charge_dates": ["2026-03-03", "2026-03-03"] },
+  "done_so_far": ["Verified identity via DOB + last4", "Confirmed duplicate charge in Stripe"],
+  "open_questions": ["Was the second charge already reversed by the bank?"],
+  "constraints": ["Refunds over $500 require human approval"],
+  "return_format": "{decision, reason, evidence[], needs_human: bool}"
+}</code></pre></div>
+  <div class="call exam"><b>Exam signal</b>
+  <ul>
+    <li>Escalating to a human? Send a structured summary (customer, issue, what was tried, what's needed). The human shouldn't need to read the transcript.</li>
+    <li>Synthesizing many sources? Have subagents return claims with source, date and quote attached, so attribution survives the merge. When sources conflict, keep both with their sources rather than silently picking one.</li>
+    <li>"Agent forgets the order number after a long chat" → a persistent facts block, not a bigger context window.</li>
+  </ul></div>
+  <div class="call trap"><b>Trap</b><p>"Use a model with a bigger context window" is rarely the best answer. A bigger window still has the lost-in-the-middle problem and costs more on every turn. Curating what goes in is usually the fix.</p></div>
+</section>
+<section class="sheet" id="escalation" data-tag="5.2" data-label="When to escalate to a human">
+  <div class="sec-head"><span class="tag">Task 5.2</span><h2 class="sec">When to escalate to a human</h2></div>
+<div class="two">
+    <div class="good"><h4>Good triggers</h4><ul>
+      <li>The customer explicitly asks for a human. Honour it right away rather than trying once more.</li>
+      <li>Policy is silent or ambiguous on this case (a policy gap)</li>
+      <li>The action is above an authority threshold (amount, account closure, legal)</li>
+      <li>The agent can't make progress: the same tool keeps failing, or information is missing and can't be obtained</li>
+      <li>Several plausible matches for an identity, so it can't be resolved safely</li>
+    </ul></div>
+    <div class="bad"><h4>Weak triggers</h4><ul>
+      <li>Sentiment analysis alone ("customer sounds upset"). Frustration doesn't mean the case is complex.</li>
+      <li>The model's self-reported confidence score. It isn't calibrated.</li>
+      <li>Escalating everything. That defeats the point of the agent.</li>
+      <li>Escalating only after N turns. That number is arbitrary.</li>
+    </ul></div>
+  </div>
+  <div class="call exam"><b>Exam signal</b><p>For an <strong>ambiguous identity</strong> (two customers named J. Smith), ask for one more identifier. Picking the most likely match is wrong. For a <strong>simple, in-policy</strong> request from a frustrated customer, resolve it while acknowledging the frustration. Escalate only if they ask for a person.</p></div>
+</section>
+<section class="sheet" id="escalate2" data-tag="5.2" data-label="Escalation fine print">
+  <div class="sec-head"><span class="tag">Task 5.2</span><h2 class="sec">Escalation: the fine print</h2>
+  <p>Four situations that look alike and need different responses.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Customer says / tool returns</th><th>Right move</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>"I want to talk to a human."</td><td>Escalate <strong>now</strong>, without investigating first</td><td>Explicit request; honour it</td></tr>
+      <tr><td>"This is ridiculous, my package is broken!" (simple, in-policy replacement)</td><td>Acknowledge the frustration and offer the fix. Escalate only if they <strong>ask again</strong> for a human</td><td>Frustration is not complexity</td></tr>
+      <tr><td>"Match the competitor's price." Policy only covers price drops on your own site</td><td>Escalate</td><td>The policy is silent on this case (a policy gap)</td></tr>
+      <tr><td><code>get_customer</code> returns 3 matches for "Maria Lopez"</td><td>Ask for another identifier (email, order number)</td><td>Never pick by heuristic</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Calibrating escalation with the prompt</h3>
+  <p>If the agent escalates easy cases and tries to handle hard ones, the first fix is <strong>explicit escalation criteria with few-shot examples</strong> in the system prompt: one "resolve" example (damaged item with photo → replace), one "escalate" example (policy exception). Classifiers, sentiment scores and self-rated confidence are the wrong answers.</p>
+  <div class="quiz-embed" data-tasks="5.2" data-count="4"></div>
+</section>
+<section class="sheet" id="propagation" data-tag="5.3" data-label="Error handling across agents">
+  <div class="sec-head"><span class="tag">Task 5.3</span><h2 class="sec">Error handling across agents</h2></div>
+<div class="tbl"><table>
+    <thead><tr><th>Category</th><th>Example</th><th>Right response</th></tr></thead>
+    <tbody>
+      <tr><td>Transient</td><td>Timeout, 429, 503</td><td>Retry with backoff, inside the tool or subagent</td></tr>
+      <tr><td>Validation</td><td>Bad ID format, missing field</td><td>Return to the model with what's wrong, so it fixes the input</td></tr>
+      <tr><td>Business rule</td><td>Refund outside the window</td><td>Not retryable. Explain to the user, offer alternatives, or escalate.</td></tr>
+      <tr><td>Permission</td><td>403, missing scope</td><td>Not retryable by the agent. Escalate or report.</td></tr>
+    </tbody>
+  </table></div>
+  <p>In a multi-agent system, a subagent that fails should return <strong>structured failure context</strong> to the coordinator: what failed, the category, what it tried, any partial results, and possible alternatives. The coordinator then decides whether to retry, route around the gap, or continue with partial results.</p>
+  <div class="two">
+    <div class="bad"><h4>Don't</h4><ul>
+      <li>Swallow the error and return an empty success. The gap disappears from the final answer.</li>
+      <li>Abort the whole workflow because one of five sources timed out</li>
+      <li>Return only "search failed"</li>
+    </ul></div>
+    <div class="good"><h4>Do</h4><ul>
+      <li>Continue with what succeeded and <strong>annotate coverage</strong>: "Section 3 lacks data from source X (timeout)"</li>
+      <li>Retry transient failures locally before escalating them</li>
+      <li>Keep "no results" separate from "couldn't search"</li>
+    </ul></div>
+  </div>
+  <div class="quiz-embed" data-tasks="5.3" data-count="4"></div>
+</section>
+<section class="sheet" id="codebase" data-tag="5.4" data-label="Large codebase exploration">
+  <div class="sec-head"><span class="tag">Task 5.4</span><h2 class="sec">Context in large codebase exploration</h2>
+  <p>The symptom to recognise: after an hour, answers drift from "<code>LedgerReconciler</code> in <code>billing/recon.py</code>" to "typically a service class would…".</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Technique</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Delegate questions to subagents</td><td>"Find all test files", "trace the refund flow's dependencies". Each runs in its own context and returns a summary</td></tr>
+      <tr><td>Scratchpad file</td><td>The agent records key findings in <code>NOTES.md</code> (class names, file:line, decisions) and re-reads it for later questions</td></tr>
+      <tr><td>Phase summaries</td><td>Summarize phase 1's findings before spawning phase 2's subagents, and inject that summary into their starting context</td></tr>
+      <tr><td><code>/compact</code></td><td>When the context fills with verbose discovery output mid-task</td></tr>
+      <tr><td>Manifests</td><td>For crash recovery: each agent exports state; the coordinator reloads it on resume</td></tr>
+    </tbody>
+  </table></div>
+  <div class="codewrap"><div class="fname"><b>NOTES.md</b><span>a scratchpad that outlives the context</span></div><pre class="code"><code class="language-markdown">## Refund flow (verified 2026-10-10)
+- Entry: api/routes/refunds.py:42 `create_refund()` → services/refund_service.py:88
+- Ledger write: billing/recon.py:LedgerReconciler.post() — NOT idempotent (no key check)
+- Tests: tests/billing/test_recon.py covers happy path only
+## Open questions
+- Who calls LedgerReconciler.reverse()? (grep found 0 direct callers; check event bus)</code></pre></div>
+  <div class="quiz-embed" data-tasks="5.4" data-count="4"></div>
+</section>
+<section class="sheet" id="hitl" data-tag="5.5" data-label="Human-in-the-loop for automated pipelines">
+  <div class="sec-head"><span class="tag">Task 5.5</span><h2 class="sec">Human-in-the-loop for automated pipelines</h2></div>
+<ul>
+    <li><strong>Route by field-level checks</strong>, not by an overall "looks good". Send a record to review when a required field is null, a cross-check fails, or a value is out of range.</li>
+    <li><strong>Calibrate before trusting confidence.</strong> If you use model confidence for routing, first check it against a labelled set to see whether "0.9" really means 90% correct for <em>this</em> task.</li>
+    <li><strong>Watch per-segment accuracy.</strong> A 97% overall rate can hide 70% on one document type. Measure by type, and use <strong>stratified sampling</strong> of auto-approved output so rare types still get human eyes.</li>
+    <li><strong>Feed corrections back.</strong> Human fixes become new few-shot examples or eval cases.</li>
+  </ul>
+</section>
+<section class="sheet" id="calibration" data-tag="5.5" data-label="Calibration & sampling">
+  <div class="sec-head"><span class="tag">Task 5.5</span><h2 class="sec">Human review, calibration and sampling</h2>
+  <p>Before reducing human review, prove the automation is accurate where it matters.</p></div>
+  <h3>Aggregate accuracy hides segments</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Document type</th><th>Share</th><th>Field accuracy</th></tr></thead>
+    <tbody>
+      <tr><td>Standard invoices</td><td class="num">82%</td><td class="num">99.1%</td></tr>
+      <tr><td>Credit notes</td><td class="num">11%</td><td class="num">96.4%</td></tr>
+      <tr><td>Handwritten receipts</td><td class="num">7%</td><td class="num">71.0%</td></tr>
+      <tr><td><strong>Overall</strong></td><td class="num">100%</td><td class="num"><strong>97.3%</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small">Illustrative numbers. "97% overall" looks safe to automate; the handwritten segment clearly isn't. Check accuracy <strong>by document type and by field</strong> before cutting review.</p>
+  <h3>Calibrating confidence</h3>
+  <ol>
+    <li>Have the model output a <strong>confidence per field</strong>.</li>
+    <li>Run on a <strong>labelled validation set</strong> and measure actual accuracy at each confidence level.</li>
+    <li>Set the review threshold from that data (e.g. fields below 0.82 go to a human).</li>
+    <li>Also route <strong>ambiguous or contradictory</strong> source documents to humans, prioritizing limited reviewer time.</li>
+  </ol>
+  <h3>Stratified random sampling</h3>
+  <p>Even auto-approved, high-confidence extractions get a random sample checked, <strong>stratified by type</strong> so rare types are represented. This measures the ongoing error rate and catches <em>new</em> error patterns that confidence scores miss.</p>
+  <div class="call trap"><b>The confidence paradox</b><p>Raw self-reported confidence is a poor <em>escalation trigger</em> (Task 5.2). Field-level confidence <em>calibrated against labelled data</em> is a good way to <em>route review</em> (Task 5.5). The difference is the calibration step.</p></div>
+  <div class="quiz-embed" data-tasks="5.5" data-count="4"></div>
+</section>
+<section class="sheet" id="provenance" data-tag="5.6" data-label="Provenance & conflicts">
+  <div class="sec-head"><span class="tag">Task 5.6</span><h2 class="sec">Provenance and uncertainty in multi-source synthesis</h2>
+  <p>Keeping "who said this, and when" attached to every claim through every step.</p></div>
+  <div class="codewrap"><div class="fname"><b>subagent output</b><span>claim–source mapping</span></div><pre class="code"><code class="language-json">{ "findings": [
+  { "claim": "Session-musician employment fell 12% between 2022 and 2025",
+    "source": "https://example.org/labour-report-2025", "doc": "Labour Report 2025, p. 14",
+    "excerpt": "…a 12 percent decline in session work…", "published": "2025-06-02",
+    "method": "national survey, n=4,100" },
+  { "claim": "Session-musician employment fell 4% between 2022 and 2025",
+    "source": "https://example.com/union-survey", "doc": "Union member survey",
+    "excerpt": "…down 4% among members…", "published": "2025-11-20",
+    "method": "member survey, n=900" }
+],
+"conflicts": [{ "topic": "session employment change", "values": ["-12%", "-4%"],
+                "note": "Different populations: national vs union members" }],
+"gaps": ["No data found for film scoring"] }</code></pre></div>
+  <ul>
+    <li><strong>Conflicting statistics</strong>: keep both with attribution and annotate the conflict. Let the coordinator decide how to reconcile. Don't pick one arbitrarily.</li>
+    <li><strong>Dates</strong>: require publication or collection dates so that "2019: 30%" vs "2025: 45%" is read as change over time, not a contradiction.</li>
+    <li><strong>Report structure</strong>: separate well-established findings from contested ones, and keep the sources' own characterizations and methods.</li>
+    <li><strong>Formatting by content type</strong>: financial data as tables, news as prose, technical findings as structured lists. Don't force everything into one format.</li>
+    <li><strong>Coverage annotations</strong>: say which areas are well supported and which have gaps because sources were unavailable.</li>
+  </ul>
+  <div class="quiz-embed" data-tasks="5.6" data-count="4"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>

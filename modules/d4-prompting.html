@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain 4 · Prompts & Structured Output</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,500;112,600;112,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body data-base="../" data-page="d4" data-track="1">
+<div class="shell">
+<nav class="toc" data-auto data-title="Domain 4" aria-label="Sections"></nav>
+<main>
+<section class="sheet hero">
+  <p class="eyebrow">Domain 4 · Prompt Engineering &amp; Structured Output</p>
+  <h1>Prompts that produce reliable output</h1>
+  <p class="lede">Explicit criteria, few-shot examples, schema design with tool_use, validate-and-retry loops, the Batch API, and multi-pass review.</p>
+  <div class="facts"><div><b>20%</b><span>of scored items</span></div><div><b>6</b><span>task statements</span></div><div><b>2 h</b><span>suggested study time</span></div></div><div class="legend"><span class="chip e">Exam signal: likely question</span><span class="chip t">Trap: tempting wrong answer</span><span class="chip c">Note</span></div>
+</section>
+
+<section class="sheet" id="criteria" data-tag="4.1" data-label="Write criteria, not adjectives">
+  <div class="sec-head"><span class="tag">Task 4.1</span><h2 class="sec">Write criteria, not adjectives</h2></div>
+<div class="two">
+    <div class="bad"><h4>Vague</h4><p>"Be conservative and only flag important issues." "Only report high-confidence findings."</p><p>Every reader interprets "important" differently, and the model's self-reported confidence isn't calibrated.</p></div>
+    <div class="good"><h4>Explicit</h4><p>"Flag: SQL built by string concatenation; secrets in source; missing auth check on a route. Do not flag: naming, formatting, or anything the linter catches."</p><p>Define each category, give a concrete example of each, and state what is out of scope.</p></div>
+  </div>
+  <p>Further habits that pay off: separate instructions, context and data with XML tags (<code>&lt;contract&gt;…&lt;/contract&gt;</code>); explain <em>why</em> a rule exists so the model can apply it to new cases; put long documents first and the question last.</p>
+</section>
+<section class="sheet" id="severity" data-tag="4.1" data-label="Criteria & false positives">
+  <div class="sec-head"><span class="tag">Task 4.1</span><h2 class="sec">Explicit criteria, severity rubrics and developer trust</h2>
+  <p>False positives aren't just noise. They make developers ignore the accurate findings too.</p></div>
+  <div class="two">
+    <div class="bad"><h4>Vague</h4><p>"Check that comments are accurate."</p></div>
+    <div class="good"><h4>Explicit</h4><p>"Flag a comment only when the behaviour it claims contradicts what the code actually does. Skip TODOs, style, and comments that are merely incomplete."</p></div>
+  </div>
+  <h3>A severity rubric with code examples</h3>
+  <div class="codewrap"><div class="fname"><b>review-criteria.md</b><span>imported by CLAUDE.md for CI</span></div><pre class="code"><code class="language-markdown">## Report
+- HIGH: exploitable or data-corrupting.
+  e.g. `db.query("SELECT * FROM users WHERE id=" + req.params.id)`
+- MEDIUM: wrong result in a realistic path.
+  e.g. `if (total &gt; limit)` where the spec says "at or above the limit"
+- LOW: latent bug unlikely to trigger.
+  e.g. unhandled promise in a shutdown hook
+
+## Do not report
+- Formatting, naming, import order (the linter owns these)
+- Patterns used consistently across this repo (e.g. our `Result&lt;T&gt;` wrapper)</code></pre></div>
+  <h3>When one category is noisy</h3>
+  <p>If "documentation accuracy" findings are wrong 60% of the time while "security" is 95% right, developers start dismissing both. <strong>Temporarily disable the noisy category</strong> to restore trust, and improve its prompt separately before turning it back on.</p>
+  <div class="call trap"><b>Trap</b><p>"Be conservative", "only report high-confidence findings" and "think carefully before flagging" don't improve precision. Only specific categorical criteria do.</p></div>
+  <div class="quiz-embed" data-tasks="4.1" data-count="4"></div>
+</section>
+<section class="sheet" id="fewshot" data-tag="4.2" data-label="Few-shot examples">
+  <div class="sec-head"><span class="tag">Task 4.2</span><h2 class="sec">Few-shot examples: for ambiguity, not for volume</h2></div>
+<p>Use 2–4 examples that cover the <strong>hard or ambiguous cases</strong>, each showing the reasoning for the choice, rather than ten easy ones. Vary them so the model generalizes instead of copying surface features. Few-shot is the right fix when output is inconsistent on judgement calls or format drifts between runs.</p>
+  <div class="codewrap"><div class="fname"><b>few-shot block</b><span>inside the system prompt</span></div><pre class="code"><code class="language-xml">&lt;examples&gt;
+  &lt;example&gt;
+    &lt;input&gt;Invoice lists "Net 30" and a due date of 2026-05-01 that disagree.&lt;/input&gt;
+    &lt;output&gt;{"due_date": "2026-05-01", "due_date_source": "explicit",
+             "conflict": "Net 30 implies 2026-04-28"}&lt;/output&gt;
+    &lt;why&gt;An explicit date wins over computed terms; record the conflict, don't hide it.&lt;/why&gt;
+  &lt;/example&gt;
+  &lt;example&gt;
+    &lt;input&gt;No due date anywhere on the invoice.&lt;/input&gt;
+    &lt;output&gt;{"due_date": null, "due_date_source": "absent", "conflict": null}&lt;/output&gt;
+    &lt;why&gt;Missing data is null. Never infer a date that isn't on the page.&lt;/why&gt;
+  &lt;/example&gt;
+&lt;/examples&gt;</code></pre></div>
+</section>
+<section class="sheet" id="fewshotuses" data-tag="4.2" data-label="Five jobs for few-shot">
+  <div class="sec-head"><span class="tag">Task 4.2</span><h2 class="sec">Five jobs few-shot examples do well</h2>
+  <p>Few-shot is the guide's answer when "detailed instructions alone produce inconsistent results".</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Job</th><th>Example set</th></tr></thead>
+    <tbody>
+      <tr><td>Consistent output format</td><td>Two findings in exactly <code>location · issue · severity · suggested fix</code> form</td></tr>
+      <tr><td>Ambiguous-case judgement</td><td>An example where the request could fit two tools, with the reasoning for picking one</td></tr>
+      <tr><td>Acceptable pattern vs real issue</td><td>One snippet that looks risky but is fine in this codebase; one that is a real bug</td></tr>
+      <tr><td>Varied document structures</td><td>Citations inline vs in a bibliography; methods in a section vs embedded in prose</td></tr>
+      <tr><td>Reducing hallucination and empty fields</td><td>Informal measurements ("about two cups" → 0.47 L, flagged approximate); a field that is present but phrased unusually, so it isn't returned as null</td></tr>
+    </tbody>
+  </table></div>
+  <p>Use <strong>2–4 targeted examples</strong> that show <em>why</em> one choice beat the plausible alternative. That lets the model generalize to new cases rather than only match the examples. Five easy examples of the obvious case teach nothing.</p>
+  <div class="quiz-embed" data-tasks="4.2" data-count="4"></div>
+</section>
+<section class="sheet" id="json" data-tag="4.3" data-label="Getting JSON that is guaranteed to parse">
+  <div class="sec-head"><span class="tag">Task 4.3</span><h2 class="sec">Getting JSON that is guaranteed to parse</h2></div>
+<div class="tbl"><table>
+    <thead><tr><th>Method</th><th>Guarantee</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Structured outputs (JSON schema response format)</td><td>Output matches the schema (constrained decoding)</td><td>Strongest syntax guarantee. The request parameter name has changed across API versions, so check current docs.</td></tr>
+      <tr><td>Forced tool use: <code>tool_choice: {"type":"tool","name":…}</code></td><td>Claude must call that tool, so you read <code>block.input</code> as your JSON</td><td>The classic extraction pattern. With <code>strict: true</code> on the tool, the input also matches the schema.</td></tr>
+      <tr><td><code>tool_choice: {"type":"any"}</code></td><td>Must call <em>some</em> tool</td><td>Useful with several extraction schemas when the document type is unknown</td></tr>
+      <tr><td><code>tool_choice: {"type":"auto"}</code></td><td>May answer in text instead</td><td>Default. Not reliable for extraction.</td></tr>
+      <tr><td>"Respond in JSON" in the prompt</td><td>None</td><td>Breaks on edge cases: stray prose, trailing commas, markdown fences</td></tr>
+    </tbody>
+  </table></div>
+  <div class="call note"><b>Version note</b><p>Anthropic's current API docs say forced tool choice (<code>{"type":"tool"}</code>) and <code>"any"</code> are <strong>not accepted by the newest models</strong> (Sonnet 5.5, Opus 5.5, Fable 5.1) and return a 400. There you use <code>auto</code> plus <code>strict: true</code> and an explicit instruction, and treat a missing tool call as a retryable error. Lab 03 does both. This is not tested live here. <strong>For the exam, answer with the guide's concepts</strong>: forced selection makes a specific tool run, and <code>any</code> guarantees some tool call.</p></div>
+  <div class="call exam"><b>Exam signal</b><p>The official exam guide names <strong>tool use with a JSON schema</strong> as "the most reliable approach for guaranteed schema-compliant structured output". When an answer option says "define an extraction tool and read the <code>tool_use</code> input", that is the exam's preferred answer.</p></div>
+
+  <div class="codewrap"><div class="fname"><b>extract_invoice.py</b><span>forced tool use + validate + retry</span></div><pre class="code"><code class="language-python">INVOICE_TOOL = {
+  "name": "record_invoice",
+  "description": "Record fields extracted from one invoice.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "vendor":      {"type": "string"},
+      "invoice_no":  {"type": ["string", "null"]},           # nullable: may be absent
+      "currency":    {"type": "string", "enum": ["USD", "EUR", "CLP", "OTHER"]},
+      "currency_other": {"type": ["string", "null"]},        # detail when OTHER
+      "line_items":  {"type": "array", "items": {
+          "type": "object",
+          "properties": {"desc": {"type": "string"}, "amount_cents": {"type": "integer"}},
+          "required": ["desc", "amount_cents"]}},
+      "stated_total_cents":     {"type": "integer"},
+      "calculated_total_cents": {"type": "integer"},          # lets you detect mismatches
+    },
+    "required": ["vendor", "invoice_no", "currency", "line_items",
+                 "stated_total_cents", "calculated_total_cents"],
+  },
+}
+
+def extract(doc: str, max_attempts: int = 3):
+    messages = [{"role": "user", "content": f"&lt;invoice&gt;{doc}&lt;/invoice&gt;\nExtract the fields."}]
+    for _ in range(max_attempts):
+        resp = client.messages.create(model="claude-sonnet-5-5", max_tokens=2048,
+            tools=[INVOICE_TOOL], tool_choice={"type": "tool", "name": "record_invoice"},
+            messages=messages)
+        call = next(b for b in resp.content if b.type == "tool_use")
+        problems = semantic_checks(call.input)   # e.g. line items don't sum to total
+        if not problems:
+            return call.input
+        # Retry WITH the specific error, so the model can correct itself
+        messages += [{"role": "assistant", "content": resp.content},
+                     {"role": "user", "content": [{"type": "tool_result",
+                       "tool_use_id": call.id, "is_error": True,
+                       "content": f"Validation failed: {problems}. Re-read the document and fix."}]}]
+    return route_to_human(doc, problems)</code></pre></div>
+
+  <div class="call exam"><b>Exam signal</b>
+  <ul>
+    <li><strong>A schema fixes syntax, not truth.</strong> Constrained output can still put the tax in the subtotal field or invent a value. Catch semantic errors with code checks (sums, date order, cross-field rules) and a retry that includes the specific error.</li>
+    <li><strong>Make fields nullable</strong> when the source may not contain them. A required non-null field pushes the model to fabricate.</li>
+    <li><strong>Enum + "other" + a detail field</strong> keeps categories clean without forcing wrong buckets.</li>
+    <li>Retrying is pointless when the information <strong>isn't in the source</strong>. Detect "absent" and return null or escalate.</li>
+    <li>Extracting <code>stated_total</code> next to <code>calculated_total</code> is a self-check pattern: the mismatch flags records for review.</li>
+  </ul></div>
+</section>
+<section class="sheet" id="schemapatterns" data-tag="4.3" data-label="Schema patterns">
+  <div class="sec-head"><span class="tag">Task 4.3</span><h2 class="sec">Schema design patterns and tool_choice sequencing</h2>
+  <p>How to shape a schema so it can say "I don't know" honestly.</p></div>
+  <div class="codewrap"><div class="fname"><b>contract extraction schema</b><span>fragment</span></div><pre class="code"><code class="language-json">{
+  "governing_law": { "type": ["string", "null"],
+                     "description": "Null if the contract does not state it." },
+  "termination_type": { "type": "string",
+                        "enum": ["for_cause", "for_convenience", "mutual", "unclear", "other"] },
+  "termination_other_detail": { "type": ["string", "null"] },
+  "auto_renewal": { "type": ["boolean", "null"] },
+  "effective_date": { "type": ["string", "null"],
+                      "description": "ISO 8601 (YYYY-MM-DD). Convert '1st March 2026' → 2026-03-01." }
+}</code></pre></div>
+  <ul>
+    <li><strong>Nullable</strong> where the source may not contain the value. A required, non-null field invites fabrication.</li>
+    <li><strong><code>"unclear"</code></strong> for genuinely ambiguous text; <strong><code>"other"</code> + detail</strong> for categories you didn't anticipate.</li>
+    <li><strong>Normalization rules in the prompt</strong> (and descriptions) alongside the strict schema handle messy source formats.</li>
+  </ul>
+  <h3>Forcing order with tool_choice</h3>
+  <div class="codewrap"><div class="fname"><b>sequenced extraction</b><span>forced first step, then free</span></div><pre class="code"><code class="language-python"># Turn 1: metadata MUST be extracted first
+r1 = client.messages.create(..., tools=ALL_TOOLS,
+        tool_choice={"type": "tool", "name": "extract_metadata"}, messages=msgs)
+msgs += [assistant(r1), tool_results(r1)]
+
+# Turn 2+: let Claude choose enrichment tools based on the metadata
+r2 = client.messages.create(..., tools=ALL_TOOLS, tool_choice={"type": "auto"}, messages=msgs)</code></pre></div>
+  <div class="quiz-embed" data-tasks="4.3" data-count="4"></div>
+</section>
+<section class="sheet" id="retry" data-tag="4.4" data-label="Validation & retry">
+  <div class="sec-head"><span class="tag">Task 4.4</span><h2 class="sec">Validation, retry and feedback loops</h2>
+  <p>Knowing when a retry will work, and when it can't.</p></div>
+  <h3>A retry message that works</h3>
+  <p>Include three things: <strong>the original document</strong>, <strong>the failed extraction</strong>, and <strong>the specific validation errors</strong>.</p>
+  <div class="codewrap"><div class="fname"><b>retry prompt</b><span>specific, not "try again"</span></div><pre class="code"><code class="language-text">&lt;document&gt;…original invoice text…&lt;/document&gt;
+&lt;previous_extraction&gt;{"subtotal_cents": 118000, "tax_cents": 0, "stated_total_cents": 129800, …}&lt;/previous_extraction&gt;
+&lt;errors&gt;
+- line_items sum to 118000 but stated_total is 129800 (difference 11800 = 10% of subtotal)
+- tax_cents is 0 but the document shows "IVA 10%"
+&lt;/errors&gt;
+Re-read the document and correct only the fields involved in these errors.</code></pre></div>
+  <div class="two">
+    <div class="good"><h4>Retry will likely fix</h4><ul><li>Format mismatch (date as "03/04/26")</li><li>Value placed in the wrong field</li><li>Structural output errors</li><li>Arithmetic that doesn't reconcile when the numbers are in the document</li></ul></div>
+    <div class="bad"><h4>Retry can't fix</h4><ul><li>The value isn't in the document</li><li>It's only in an external document you didn't provide ("see Schedule B")</li><li>The source itself is contradictory, so flag <code>conflict_detected</code> instead</li></ul></div>
+  </div>
+  <h3>Learning from dismissals: <code>detected_pattern</code></h3>
+  <p>Add a <code>detected_pattern</code> field to every review finding (e.g. <code>"string-concat-sql"</code>, <code>"missing-null-check"</code>). When developers dismiss findings, group the dismissals by pattern to see exactly which construct produces false positives, then fix that criterion.</p>
+  <div class="quiz-embed" data-tasks="4.4" data-count="4"></div>
+</section>
+<section class="sheet" id="batchdeep" data-tag="4.5" data-label="Batch API in depth">
+  <div class="sec-head"><span class="tag">Task 4.5</span><h2 class="sec">The Message Batches API in depth</h2>
+  <p>Submit many ordinary Messages requests at once, collect results later, and pay half.</p></div>
+  <div class="facts">
+    <div><b>50%</b><span>of the normal price, input and output</span></div>
+    <div><b>≤ 24 h</b><span>processing window; no latency SLA</span></div>
+    <div><b>custom_id</b><span>your key that links each result to its request</span></div>
+    <div><b>1 turn</b><span>no tool loop inside a request</span></div>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+  A["create(requests with custom_id)"] --> B["status: in_progress"]
+  B -->|poll| B
+  B --> C["status: ended"]
+  C --> D["results: JSONL, any order"]
+  D --> E{"result.type"}
+  E -->|succeeded| F[Save by custom_id]
+  E -->|"errored / expired / canceled"| G["Fix if needed, resubmit ONLY these"]
+  </pre>
+  <div class="codewrap"><div class="fname"><b>batch_extract.py</b><span>create → poll → results → resubmit failures</span></div><pre class="code"><code class="language-python">batch = client.messages.batches.create(requests=[
+    {"custom_id": f"invoice-{doc.id}",
+     "params": {"model": MODEL, "max_tokens": 1024, "tools": [INVOICE_TOOL],
+                "tool_choice": {"type": "tool", "name": "record_invoice"},
+                "messages": [{"role": "user", "content": doc.text}]}}
+    for doc in docs])
+
+while client.messages.batches.retrieve(batch.id).processing_status != "ended":
+    time.sleep(60)
+
+failed = []
+for r in client.messages.batches.results(batch.id):       # NOT in submission order
+    if r.result.type == "succeeded":
+        save(r.custom_id, r.result.message.content[0].input)
+    else:
+        failed.append(r.custom_id)                         # errored | expired | canceled
+# Resubmit only `failed`, e.g. chunking documents that exceeded the context limit</code></pre></div>
+  <h3>SLA arithmetic</h3>
+  <p>You promise results within <strong>30 hours</strong> of a document arriving, and a batch can take <strong>24</strong>. The worst case is a document arriving just after a submission: it waits for the next window, then takes 24 h. So <code>window + 24 ≤ 30</code>, meaning you submit at least every <strong>6 hours</strong>, and every <strong>4</strong> to leave a margin. That is the guide's example.</p>
+  <h3>Before a big batch</h3>
+  <p>Refine the prompt on a <strong>sample set</strong> first. A prompt bug found after 50,000 documents means paying for 50,000 more.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Workload</th><th>Batch?</th></tr></thead>
+    <tbody>
+      <tr><td>Overnight technical-debt report, weekly audit, nightly test generation</td><td><strong>Yes</strong></td></tr>
+      <tr><td>Backfill extraction of 200k archived documents</td><td><strong>Yes</strong></td></tr>
+      <tr><td>Blocking pre-merge check</td><td><strong>No</strong>: someone is waiting, and there is no SLA</td></tr>
+      <tr><td>Agent that needs to call tools and continue</td><td><strong>No</strong>: no multi-turn tool calling inside a request</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz-embed" data-tasks="4.5" data-count="4"></div>
+</section>
+<section class="sheet" id="selfeval" data-tag="4.6" data-label="Self-evaluation patterns">
+  <div class="sec-head"><span class="tag">Task 4.6</span><h2 class="sec">Self-evaluation patterns</h2></div>
+<ul>
+    <li><strong>Separate critic instance</strong> (evaluator–optimizer): a second call with its own rubric and no access to the generator's reasoning.</li>
+    <li><strong>Verify against reality</strong>: run the tests, re-query the record, check that cited quotes really appear in the source. Execution beats introspection.</li>
+    <li><strong>Built-in cross-checks</strong>: the stated vs calculated totals pattern, or asking for citations that code can verify.</li>
+    <li><strong>Stop hooks</strong>: refuse to let the agent finish until a check passes.</li>
+  </ul>
+</section>
+<section class="sheet" id="multipass" data-tag="4.6" data-label="Multi-pass review">
+  <div class="sec-head"><span class="tag">Task 4.6</span><h2 class="sec">Multi-instance and multi-pass review</h2>
+  <p>Why a second, independent reviewer finds what the author can't.</p></div>
+  <ul>
+    <li><strong>Self-review is weak</strong>: in the same session, the model keeps the reasoning that produced the code and is unlikely to question it. This is true even with extended thinking.</li>
+    <li><strong>Independent instance</strong>: a fresh Claude call with the diff and the criteria, but <em>not</em> the generator's reasoning, catches subtler issues.</li>
+    <li><strong>Multi-pass</strong>: per-file passes for local issues plus a separate integration pass for cross-file data flow. This avoids attention dilution and contradictory findings.</li>
+    <li><strong>Confidence alongside each finding</strong> can be used to route review attention, once calibrated (see Domain 5).</li>
+  </ul>
+  <div class="call trap"><b>Trap</b><p>"Run three reviews and keep only findings that appear in two" sounds rigorous, but it <strong>suppresses real bugs</strong> that a single pass catches only some of the time. "Use a larger context window" doesn't fix attention quality. "Make developers split PRs" moves the burden without improving the system.</p></div>
+  <div class="quiz-embed" data-tasks="4.6" data-count="4"></div>
+</section>
+</main>
+</div>
+<footer class="footer">Personal study notes for the Claude Certified Architect – Foundations exam, based on the official exam guide v1.0 (July 2026). Not affiliated with or endorsed by Anthropic. Progress is saved in this browser only.</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="../assets/js/data/questions-s1-s3.js"></script>
+<script src="../assets/js/data/questions-s2-s4.js"></script>
+<script src="../assets/js/data/questions-s5-s6.js"></script>
+<script src="../assets/js/app.js"></script>
+</body>
+</html>
