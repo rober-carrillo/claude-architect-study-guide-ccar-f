@@ -19,7 +19,9 @@ Progress (answers, studied sections, flashcard boxes, mock history) is saved in 
 
 ## Using it
 
-Open `index.html` in a browser. Pages load fonts, syntax highlighting (highlight.js) and diagrams (Mermaid) from public CDNs, so you need an internet connection for those. Everything else is local.
+Open https://<your-user>.github.io/claude-architect-study-guide/. 
+
+Or open `index.html` in a browser. Pages load fonts, syntax highlighting (highlight.js) and diagrams (Mermaid) from public CDNs, so you need an internet connection for those. Everything else is local.
 
 If your browser is strict about `file://` pages, serve the folder instead:
 
